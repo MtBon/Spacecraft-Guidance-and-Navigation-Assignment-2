@@ -5,13 +5,15 @@
 %
 %% Point 1
 
-clc; clearvars; cspice_kclear; close all
+clc; clearvars; close all
+
 
 % Replace the path below with your own installation path if not present as
 % a subfolder
 addpath('sgp4');
 addpath('functions');
 addpath('kernels');
+addpath('..\mice\');
 % Load spice kernels
 cspice_furnsh('assignment02.tm');
 
@@ -74,12 +76,13 @@ Station2.min_el = 5;       %[Deg]
 
 %Propagate Mango state
 Sat1.xx = zeros(length(et),6);
-% First state at visibility window
+
+% First state 
 [Sat1.xx(1,:), ~, ~] = keplerian_propagator(et_ref, x0_mean_sat1, et0 , 'Earth');
 
 for j = 2:length(et)
 
-%State during visibility window
+%State 
 [ Sat1.xx(j,:), ~,~] = keplerian_propagator(et(j-1), Sat1.xx(j-1,:), et(j) , 'Earth');
 
 end
@@ -90,6 +93,7 @@ end
 % Compute antenna angles, satellite range and range-rate wrt Station 2
 [Station2.sat1.rho, Station2.sat1.azimuth, Station2.sat1.elevation] = pointing(Station2.name,Sat1.xx(:,1:3)',Sat1.xx(:,4:6)',et);
 
+%% Point 2
 
 %TLE for Mango
 longstr1 = '1 36599U 10028B   10224.22752732 -.00000576  00000-0 -16475-3 0  9998';
@@ -101,9 +105,9 @@ sat1rec = twoline2rv(longstr1, longstr2, typerun,'e', opsmode, whichconst);
 sat1_tle_epoch_str = sprintf('%d-%02d-%02dT%02d:%02d:%02.6f', [year,mon,day,hr,min,sec]);
 sat1_epoch_et = cspice_str2et(sat1_tle_epoch_str);
 
-% Set nutation corrections parameters (same date as first example -> same values)
-ddpsi = -0.111690*arcsec2rad; %  [rad]
-ddeps = -0.006855*arcsec2rad; %  [rad]
+% Set nutation corrections parameters 
+ddpsi = -0.073296 * arcsec2rad; %  [rad]
+ddeps = -0.009373 * arcsec2rad; %  [rad]
 
 % Loop over epochs
 reci_sat1 = zeros(3,length(et));
@@ -128,50 +132,101 @@ end
 
 
 
-
-
-
 % Compute antenna angles, satellite range and range-rate wrt Station 2
 [Station2.sat1.rho_noise, Station2.sat1.azimuth_noise, Station2.sat1.elevation_noise] = pointing(Station2.name,reci_sat1,veci_sat1,et);
 
 
-% 
-% for i = 1:length(et)
-% 
-%     % Model Noise for station 1
-%     Station1.sat1.rho_noise(i) = Station1.sat1.rho_noise(i) + rand(1) * Station1.sigma_rho;
-%     Station1.sat1.azimuth_noise(i) = Station1.sat1.azimuth_noise(i)*cspice_dpr() + rand(1) * Station1.sigma_az;
-%     Station1.sat1.elevation_noise(i) = Station1.sat1.elevation_noise(i)*cspice_dpr() + rand(1) * Station1.sigma_el;
-% 
-%     % Model Noise for station 2
-%     Station2.sat1.rho_noise(i) = Station2.sat1.rho_noise(i) + rand(1) * Station2.sigma_rho;
-%     Station2.sat1.azimuth_noise(i) = Station2.sat1.azimuth_noise(i) *cspice_dpr() + rand(1) * Station2.sigma_az;
-%     Station2.sat1.elevation_noise(i) = Station2.sat1.elevation_noise(i) *cspice_dpr() + rand(1) * Station2.sigma_el;
-% 
-% end
-
 % Model for noise
 %Station 1
-Station1.sat1.rho_noise = mvnrnd(Station1.sat1.rho,diag(ones(length(et),1)*Station1.sigma_rho));
-Station1.sat1.azimuth_noise = mvnrnd(Station1.sat1.azimuth*cspice_dpr(),diag(ones(length(et),1)*Station1.sigma_az));
-Station1.sat1.elevation_noise = mvnrnd(Station1.sat1.elevation*cspice_dpr(),diag(ones(length(et),1)*Station1.sigma_el));
+Station1.sat1.rho_noise = mvnrnd(Station1.sat1.rho,ones(1,length(et))*Station1.sigma_rho^2);
+Station1.sat1.azimuth_noise = mvnrnd(Station1.sat1.azimuth*cspice_dpr(),ones(1,length(et))*Station1.sigma_az^2);
+Station1.sat1.elevation_noise = mvnrnd(Station1.sat1.elevation*cspice_dpr(),ones(1,length(et))*Station1.sigma_el^2);
 
 % Station 2
-Station2.sat1.rho_noise = mvnrnd(Station2.sat1.rho,diag(ones(length(et),1)*Station2.sigma_rho));
-Station2.sat1.azimuth_noise = mvnrnd(Station2.sat1.azimuth*cspice_dpr(),diag(ones(length(et),1)*Station2.sigma_az));
-Station2.sat1.elevation_noise = mvnrnd(Station2.sat1.elevation*cspice_dpr(),diag(ones(length(et),1)*Station2.sigma_el));
+Station2.sat1.rho_noise = mvnrnd(Station2.sat1.rho,ones(1,length(et))*Station2.sigma_rho^2);
+Station2.sat1.azimuth_noise = mvnrnd(Station2.sat1.azimuth*cspice_dpr(),ones(1,length(et))*Station2.sigma_az^2);
+Station2.sat1.elevation_noise = mvnrnd(Station2.sat1.elevation*cspice_dpr(),ones(1,length(et))*Station2.sigma_el^2);
 
 % Visibility windows
+
+% Station 1 w/o Noise
 i_visibility_station1 = Station1.sat1.elevation * cspice_dpr() > Station1.min_el;
-et(i_visibility_station1)
+Station1.sat1.visibility = et(i_visibility_station1);
+visibility(Station1.sat1.visibility,Station1.name,Sat1.name)
 
+% Station 1 with Noise
 i_visibility_noise_station1 = Station1.sat1.elevation_noise  > Station1.min_el;
-et(i_visibility_noise_station1)
+Station1.sat1.visibility_noise = et(i_visibility_noise_station1);
+visibility(Station1.sat1.visibility_noise,Station1.name,Sat1.name)
 
+% Station 2 w/o noise
 i_visibility_station2 = Station2.sat1.elevation * cspice_dpr > Station2.min_el ;
-et(i_visibility_station2)
+Station2.sat1.visibility = et(i_visibility_station2);
+visibility(Station2.sat1.visibility,Station2.name,Sat1.name)
+
+% Station 2 with nosie
 i_visibility_noise_station2 = Station2.sat1.elevation_noise  > Station2.min_el ;
-et(i_visibility_noise_station2)
+Station2.sat1.visibility_noise = et(i_visibility_noise_station2);
+visibility(Station2.sat1.visibility_noise,Station2.name,Sat1.name)
+
+%% Point 3
+% Batch Filter
+
+% Noise Covariance Matrix
+meas_noise_cov = diag([Station1.sigma_rho^2, Station1.sigma_az^2, Station1.sigma_el.^2]);
+
+% Weights matrix
+W_m = inv(sqrtm(meas_noise_cov));
+
+% Simulated Measurements
+meas_real_station1 = [Station1.sat1.rho_noise(i_visibility_noise_station1); Station1.sat1.azimuth_noise(i_visibility_noise_station1); Station1.sat1.elevation_noise(i_visibility_noise_station1)]';
+meas_real_station2 = [Station2.sat1.rho_noise(i_visibility_noise_station2); Station2.sat1.azimuth_noise(i_visibility_noise_station2); Station2.sat1.elevation_noise(i_visibility_noise_station2)]';
+
+% Initial Guess
+x0_guess = [reci_sat1(:,1) ; veci_sat1(:,1)];
+
+fun1 = @(x) costfunction(x, Station1.sat1.visibility_noise, W_m, meas_real_station1,Station1);
+fun2 = @(x) costfunction(x, Station2.sat1.visibility_noise, W_m, meas_real_station2,Station2);
+
+fun1_j2 = @(x) costfunction_J2(x, Station1.sat1.visibility_noise, W_m, meas_real_station1,Station1);
+fun2_j2 = @(x) costfunction_J2(x, Station2.sat1.visibility_noise, W_m, meas_real_station2,Station2);
+
+% Call lsqnonlin
+options = optimoptions('lsqnonlin', 'Algorithm', 'levenberg-marquardt', 'Display', 'iter');
+
+[x1,resnorm1,residual1,exitflag1,~,~,jacobian1] = lsqnonlin(fun1, x0_guess, [], [], options);
+[x2,resnorm2,residual2,exitflag2,~,~,jacobian2] = lsqnonlin(fun2, x0_guess, [], [], options);
+
+[x1_j2,resnorm1_j2,residual1_j2,exitflag1_j2,~,~,jacobian1_j2] = lsqnonlin(fun1_j2, x0_guess, [], [], options);
+[x2_j2,resnorm2_j2,residual2_j2,exitflag2_j2,~,~,jacobian2_j2] = lsqnonlin(fun2_j2, x0_guess, [], [], options);
+
+
+x0 = [reci_sat1(:,1); veci_sat1(:,1)];
+
+% Print results
+disp('x0_guess - x_0 =');
+disp((x0_guess - x0).');
+disp('x1 - x_0 =');
+disp((x1 - x0).');
+disp('x2 - x_0 =');
+disp((x2 - x0).');
+disp('x1_j2 - x_0 =');
+disp((x1_j2 - x0).');
+disp('x2_j2 - x_0 =');
+disp((x2_j2 - x0).');
+% Covariance computation
+Jac1 = full(jacobian1);
+P_ls1 = resnorm1/(length(residual1)-length(x0)).*inv(Jac1.'*Jac1);
+
+Jac2 = full(jacobian2);
+P_ls2 = resnorm2/(length(residual2)-length(x0)).*inv(Jac2.'*Jac2);
+
+Jac1_j2 = full(jacobian1_j2);
+P_ls1_j2 = resnorm1_j2/(length(residual1_j2)-length(x0)).*inv(Jac1_j2.'*Jac1_j2);
+
+Jac2_j2 = full(jacobian2_j2);
+P_ls2_j2 = resnorm2_j2/(length(residual2_j2)-length(x0)).*inv(Jac2_j2.'*Jac2_j2);
+
 
 %%
 figure()
@@ -303,6 +358,56 @@ title(['@',Station2.name])
 %% Functions
 %
 %
+function residual = costfunction(x, t_span, W_m, meas_real,Station)
+
+residual = zeros(size(meas_real)); % Initialize output variable
+
+mu = cspice_bodvrd('Earth','GM',1);
+
+% Propagate x to the epochs of the measurements
+fun = @(t,x) keplerian_rhs(t,x,mu);
+options = odeset('Reltol',1.e-13,'Abstol',1.e-20);
+[~,x_prop] = ode113(fun,t_span,x,options);
+
+% Compute predicted measurements 
+[rho, azimuth, elevation] = pointing(Station.name,x_prop(:,1:3)',x_prop(:,4:6)',t_span);
+
+meas_pred = [rho', azimuth'*cspice_dpr() , elevation'*cspice_dpr()]; 
+
+% Compute the residual of the measurements and append it to the output
+for k=1:length(t_span)
+    diff_meas_weighted = W_m * (meas_pred(k,:) - meas_real(k,:))';
+    residual(k,:) = diff_meas_weighted';
+end
+
+end
+%
+%
+function residual = costfunction_J2(x, t_span, W_m, meas_real,Station)
+
+residual = zeros(size(meas_real)); % Initialize output variable
+
+mu = cspice_bodvrd('Earth','GM',1);
+
+% Propagate x to the epochs of the measurements
+fun = @(t,x) keplerian_rhs_J2(t,x,mu);
+options = odeset('Reltol',1.e-13,'Abstol',1.e-20);
+[~,x_prop] = ode113(fun,t_span,x,options);
+
+% Compute predicted measurements 
+[rho, azimuth, elevation] = pointing(Station.name,x_prop(:,1:3)',x_prop(:,4:6)',t_span);
+
+meas_pred = [rho', azimuth'*cspice_dpr() , elevation'*cspice_dpr()]; 
+
+% Compute the residual of the measurements and append it to the output
+for k=1:length(t_span)
+    diff_meas_weighted = W_m * (meas_pred(k,:) - meas_real(k,:))';
+    residual(k,:) = diff_meas_weighted';
+end
+
+end
+%
+%
 function [xf, tt, xx] = keplerian_propagator(t0, x0, t1 , attractor)
 %KEPLERIAN_PROPAGATOR Propagate a Keplerian Orbit 
 
@@ -310,7 +415,7 @@ function [xf, tt, xx] = keplerian_propagator(t0, x0, t1 , attractor)
     GM = cspice_bodvrd(attractor, 'GM', 1);
 
 
-options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-8; ones(3,1)*1e-11]);
+options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-9; ones(3,1)*1e-12]);
 
 % Perform integration
 [tt, xx] = ode78(@(t,x) keplerian_rhs(t,x,GM), [0 t1-t0], x0, options);
@@ -371,7 +476,50 @@ end
 %
 %
 %
+function [dxdt] = keplerian_rhs_J2(t, x, GM)
+%KEPLERIAN_RHS_J2  Evaluates the right-hand-side of a 2-body (keplerian) propagator
+%   Evaluates the right-hand-side of a newtonian 2-body propagator with J2 perturbation.
+%
+%
+% Author
+%   Name: Matteo
+%   Surname: Bono
+%   University: Politecnico di Milano 
+%   
+%   % 
+% Inputs:
+%   t   : [ 1, 1] epoch 
+%   x   : [6, 1] cartesian state vector wrt Solar-System-Barycentre and
+%                 State Transition Matrix elements
+%   GM  : [ 1, 1] gravitational constant of the body
+%
+% Outputs:
+%   dxdt   : [6,1] RHS, newtonian gravitational acceleration only
+%
 
+% Initialize right-hand-side
+dxdt = zeros(6,1);
+
+% Extract positions
+rr = x(1:3);
+
+% Compute square distance and distance
+dist2 = dot(rr, rr);
+dist = sqrt(dist2);
+
+rotm = cspice_pxform('J2000','ITRF93',t);
+radii = cspice_bodvrd('Earth','RADII',3);
+pos_ECEF = rotm * rr;
+J2 = 0.0010826269;
+aj2 = 3/2 * GM * J2 * pos_ECEF/norm(pos_ECEF)^3 * (radii(1)/norm(pos_ECEF))^2 .* ( 5 * (pos_ECEF(3)/norm(pos_ECEF))^2 - [1;1;3]);
+rotm_ECI = cspice_pxform('ITRF93','J2000',t);
+aj2 = rotm_ECI * aj2;
+% Position detivative is object's velocity
+dxdt(1:3) = x(4:6);   
+% Compute the gravitational acceleration using Newton's law
+dxdt(4:6) = - GM * rr /(dist*dist2) + aj2;
+
+end
 function [rho, azimuth, elevation] = pointing(stationName,rr_ECI,vv_ECI,et)
 %
 % This function is used to compute the measurement of Range, Azimuth and
@@ -423,9 +571,55 @@ rv_station_sat_topo(:,i) = ROT_ECI2TOPO(:,:,i) * rv_station_sat_eci(:,i);
 end
 
 end
+%
+%
+function visibility(et,stationname,satname,tstep)
+%
+% This function evaluate the boundaries of the visibility windows given as
+% input the visibility times with a fixed step
+%
+%   INPUT:      -et: Time of visibility in ET   [s], [1,n]
+%               -tstep: Given step of et, (1 minute if not specified)
+%
+%
+%   AUTHOT: Matteo Bono
+%
+%   
+if(nargin<4)
+    tstep = 60;
+end
 
+fprintf('@%s for #%s: Start Visibility: %s\n',stationname,satname,cspice_et2utc(et(1),'C',3));
+
+flag=true;
+k = 2;
+while(flag==true && k<length(et)+1)
+
+    if((et(k) - et(k-1)) == tstep)
+        k = k+1;
+    else
+        flag = false;
+        fprintf('@%s for #%s: End of Visibility: %s\n',stationname,satname,cspice_et2utc(et(k-1),'C',3));
+        fprintf('--------------------------------------------------------------------------\n');
+        k = k+1;
+
+    end
+    if(flag == false && k<length(et))
+        flag = true;
+        fprintf('@%s for #%s: Start Visibility: %s\n',stationname,satname,cspice_et2utc(et(k-1),'C',3));
+    end
+
+    if(flag==true && k==length(et))
+        %flag = false;
+        fprintf('@%s for #%s: End of Visibility: %s\n',stationname,satname,cspice_et2utc(et(k),'C',3));
+        fprintf('--------------------------------------------------------------------------\n');
+    end
+
+end
+end
 %
 %
+
 function matlab_graphics()
 %{
 Set graphical values for better looking plots
