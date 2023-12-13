@@ -210,7 +210,7 @@ x0 = [reci_sat1(:,1) ; veci_sat1(:,1)];
 % disp((x0_guess - x0).');
 disp('x1 - x_0 =');
 disp((x1 - x0).');
-disp('x_12 - x_0 =');
+disp('x2 - x_0 =');
 disp((x_12 - x0).');
 disp('x_12_j2 - x_0 =');
 disp((x_12_j2 - x0).');
@@ -301,8 +301,9 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
-
 subplot(1,2,2)
+
+
 scatter(Station2.sat1.azimuth(i_visibility_station2)*cspice_dpr(), Station2.sat1.elevation(i_visibility_station2)*cspice_dpr(),'b','filled','DisplayName', Sat1.name)
 hold on;
 plot([-180 180],[Station2.min_el Station2.min_el],'--')
