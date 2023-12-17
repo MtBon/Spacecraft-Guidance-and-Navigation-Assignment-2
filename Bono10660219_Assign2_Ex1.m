@@ -528,40 +528,83 @@ legend('LinCov','UT','MC');
 
 % MC Points in Orbital Plane
 figure()
+subplot(1,2,1)
 hold on;
 scatter(r_mc1(:,1,1),r_mc1(:,2,1),14);
 scatter(r_mc1(:,1,4),r_mc1(:,2,4),14);
 scatter(r_mc1(:,1,end),r_mc1(:,2,end),14);
+
 drawEllipse(mc_mean_lvlh_sat1(1:2,1), mc_cov_sat1_lvlh(1:2,1:2,1),3)
 drawEllipse(mc_mean_lvlh_sat1(1:2,4), mc_cov_sat1_lvlh(1:2,1:2,4),3)
 drawEllipse(mc_mean_lvlh_sat1(1:2,end), mc_cov_sat1_lvlh(1:2,1:2,end),3)
-legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
+legend('','','','Mango:Covariance @Rev:1','Mango:Covariance @Rev:4','Mango:Covariance at tf');
+
+subplot(1,2,2)
+hold on;
+scatter(r_mc2(:,1,1),r_mc2(:,2,1),14);
+scatter(r_mc2(:,1,4),r_mc2(:,2,4),14);
+scatter(r_mc2(:,1,end),r_mc2(:,2,end),14);
+
+drawEllipse(mc_mean_lvlh_sat2(1:2,1), mc_cov_sat2_lvlh(1:2,1:2,1),3)
+drawEllipse(mc_mean_lvlh_sat2(1:2,4), mc_cov_sat2_lvlh(1:2,1:2,4),3)
+drawEllipse(mc_mean_lvlh_sat2(1:2,end), mc_cov_sat2_lvlh(1:2,1:2,end),3)
+
+legend('','','','Tango:Covariance @Rev:1','Tango:Covariance @Rev:4','Tango:Covariance at tf');
 title('MC');
 
 % UT Points
 figure()
- scatter(sigma_p1_lvlh(1,:,1),sigma_p1_lvlh(2,:,1),20)
-  hold on;
- scatter(sigma_p1_lvlh(1,:,4),sigma_p1_lvlh(2,:,4),20)
- scatter(sigma_p1_lvlh(1,:,end),sigma_p1_lvlh(2,:,end),20)
+subplot(1,2,1)
+hold on;
+scatter(sigma_p1_lvlh(1,:,1),sigma_p1_lvlh(2,:,1),20)
+scatter(sigma_p1_lvlh(1,:,4),sigma_p1_lvlh(2,:,4),20)
+scatter(sigma_p1_lvlh(1,:,end),sigma_p1_lvlh(2,:,end),20)
 
- drawEllipse(sigma_mean1_lvlh(1:2,1), sigma_cov1_lvlh(1:2,1:2,1),3)
+drawEllipse(sigma_mean1_lvlh(1:2,1), sigma_cov1_lvlh(1:2,1:2,1),3)
 drawEllipse(sigma_mean1_lvlh(1:2,4), sigma_cov1_lvlh(1:2,1:2,4),3)
 drawEllipse(sigma_mean1_lvlh(1:2,end), sigma_cov1_lvlh(1:2,1:2,end),3)
 legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
-title('UT');
+title('UT: Mango');
+
+subplot(1,2,2)
+hold on;
+scatter(sigma_p2_lvlh(1,:,1),sigma_p2_lvlh(2,:,1),20)
+scatter(sigma_p2_lvlh(1,:,4),sigma_p2_lvlh(2,:,4),20)
+scatter(sigma_p2_lvlh(1,:,end),sigma_p2_lvlh(2,:,end),20)
+
+drawEllipse(sigma_mean2_lvlh(1:2,1), sigma_cov2_lvlh(1:2,1:2,1),3)
+drawEllipse(sigma_mean2_lvlh(1:2,4), sigma_cov2_lvlh(1:2,1:2,4),3)
+drawEllipse(sigma_mean2_lvlh(1:2,end), sigma_cov2_lvlh(1:2,1:2,end),3)
+legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
+title('UT: Tango');
+
 
 %LinCov
 figure()
-scatter(r_lin1(1,1),r_lin1(2,1),30);
+subplot(1,2,1)
 hold on;
+scatter(r_lin1(1,1),r_lin1(2,1),30);
 scatter(r_lin1(1,4),r_lin1(2,4),30)
 scatter(r_lin1(1,end),r_lin1(2,end),30)
+
 drawEllipse(r_lin1(1:2,1), P_lvlh_sat1(1:2,1:2,1),3)
 drawEllipse(r_lin1(1:2,4), P_lvlh_sat1(1:2,1:2,4),3)
 drawEllipse(r_lin1(1:2,end), P_lvlh_sat1(1:2,1:2,end),3)
 legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
-title('LinCov');
+title('LinCov: Mango');
+
+subplot(1,2,2)
+hold on;
+scatter(r_lin2(1,1),r_lin2(2,1),30);
+scatter(r_lin2(1,4),r_lin2(2,4),30)
+scatter(r_lin2(1,end),r_lin2(2,end),30)
+
+drawEllipse(r_lin2(1:2,1), P_lvlh_sat2(1:2,1:2,1),3)
+drawEllipse(r_lin2(1:2,4), P_lvlh_sat2(1:2,1:2,4),3)
+drawEllipse(r_lin2(1:2,end), P_lvlh_sat2(1:2,1:2,end),3)
+
+legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
+title('LinCov: Tango');
 %% Functions
 
 function [xf, PHI_f, tt, xx ] = keplerian_propagator_STM( et0,x0, et1 , attractor)
