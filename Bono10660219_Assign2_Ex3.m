@@ -33,7 +33,7 @@ Sat1.v0_mean = [0.812221125483763; -0.721512914578826; 7.42665302729053];
 Sat1.x0_mean = [Sat1.r0_mean; Sat1.v0_mean];
 
 % Covariance Matrix
- P0 = [   [5.6e-7  3.5e-7  -7.1e-8 
+ P0_ref = [   [5.6e-7  3.5e-7  -7.1e-8 
            3.5e-7  9.7e-7   7.6e-8      
           -7.1e-8  7.6e-8   8.1e-8]            zeros(3)
 
@@ -63,9 +63,17 @@ Station2.sigma_el = 125 * 1e-3;    %[Deg]
 Station2.sigma_rho = 0.01;  %[Km]
 Station2.min_el = 5;       %[Deg]
 
+% Parameters of FFRF
+FFRF.sigma_az = 1;      % [Deg]
+FFRF.sigma_el = 1;      % [Deg]
+FFRF.sigma_rho = 1 * 1e-5; %[Km]
 
-% First state 
-[Sat1.xx(1,:), ~, ~] = keplerian_propagator(et_ref, Sat1.x0_mean, et0 , 'Earth');
+
+%% Point 1a
+
+% First state at t0
+[Sat1.xx(1,:), ~, ~ ] = keplerian_propagator( et_ref,Sat1.x0_mean, et0 , 'Earth');
+
 
 for j = 2:length(et)
 
@@ -78,38 +86,62 @@ end
 % Compute antenna angles, satellite range wrt Station 2
 [Station2.sat1.rho, Station2.sat1.azimuth, Station2.sat1.elevation] = pointing(Station2.name,Sat1.xx(:,1:3)',Sat1.xx(:,4:6)',et);
 
+%% Point 1b
 
 %TLE for Mango
-longstr1 = '1 36599U 10028B   10224.22752732 -.00000576  00000-0 -16475-3 0  9998';
-longstr2 = '2 36599 098.2803 049.5758 0043871 021.7908 338.5082 14.40871350  8293';
+Sat1.longstr1 = '1 36599U 10028B   10224.22752732 -.00000576  00000-0 -16475-3 0  9998';
+Sat1.longstr2 = '2 36599 098.2803 049.5758 0043871 021.7908 338.5082 14.40871350  8293';
 
-sat1rec = twoline2rv(longstr1, longstr2, typerun,'e', opsmode, whichconst);
+% TLE for Tango
+Sat2.longstr1 = '1 36827U 10028F   10224.22753605  .00278492  00000-0  82287-1 0  9996';
+Sat2.longstr2 = '2 36827 098.2797 049.5751 0044602 022.4408 337.8871 14.40890217    55';
 
+sat1rec = twoline2rv(Sat1.longstr1, Sat1.longstr2, typerun,'e', opsmode, whichconst);
+sat2rec = twoline2rv(Sat2.longstr1, Sat2.longstr2, typerun,'e', opsmode, whichconst);
+
+% Mango
 [year,mon,day,hr,min,sec] = invjday(sat1rec.jdsatepoch, sat1rec.jdsatepochf);
 sat1_tle_epoch_str = sprintf('%d-%02d-%02dT%02d:%02d:%02.6f', [year,mon,day,hr,min,sec]);
 sat1_epoch_et = cspice_str2et(sat1_tle_epoch_str);
+
+% Tango
+[year,mon,day,hr,min,sec] = invjday(sat2rec.jdsatepoch, sat2rec.jdsatepochf);
+sat2_tle_epoch_str = sprintf('%d-%02d-%02dT%02d:%02d:%02.6f', [year,mon,day,hr,min,sec]);
+sat2_epoch_et = cspice_str2et(sat2_tle_epoch_str);
+
 
 % Set nutation corrections parameters 
 ddpsi = -0.073296 * arcsec2rad; %  [rad]
 ddeps = -0.009373 * arcsec2rad; %  [rad]
 
-% Loop over epochs
+% Initialize
 Sat1.reci = zeros(3,length(et));
 Sat1.veci = zeros(3,length(et));
+Sat2.reci = zeros(3,length(et));
+Sat2.veci = zeros(3,length(et));
 
+% Loop over epochs
 for i = 1:length(et)
 
-    % SGP4 propagation
-    tsince = (et(i) - sat1_epoch_et)/60.0;   % time from TLE epoch in minutes
-    [~,Sat1.rteme,Sat1.vteme] = sgp4(sat1rec,  tsince);
+    % SGP4 propagation for both satellites
+    tsince1 = (et(i) - sat1_epoch_et)/60.0;   % time from TLE epoch of Mango in minutes
+    tsince2 = (et(i) - sat2_epoch_et)/60.0;   % time from TLE epoch of Tango in minutes
+    [~,Sat1.rteme,Sat1.vteme] = sgp4(sat1rec,  tsince1);
+    [~,Sat2.rteme,Sat2.vteme] = sgp4(sat2rec,  tsince2);
     
     % Compute centuries from 2000-01-01T00:00:00.00 TDT
     ttt = cspice_unitim(et(i), 'ET', 'TDT')/cspice_jyear()/100;
     
     % TEME to ECI conversion
     [Sat1.reci(:,i), Sat1.veci(:,i)] = teme2eci(Sat1.rteme ,Sat1.vteme, [0.0;0.0;0.0],  ttt, ddpsi, ddeps);
+    [Sat2.reci(:,i), Sat2.veci(:,i)] = teme2eci(Sat2.rteme ,Sat2.vteme, [0.0;0.0;0.0],  ttt, ddpsi, ddeps);
+
 
 end
+
+GM = cspice_bodvrd('Earth','GM',1);
+
+
 
 % Compute antenna angles, satellite range and range-rate wrt Station 2
 [Station2.sat1.rho, Station2.sat1.azimuth, Station2.sat1.elevation] = pointing(Station2.name,Sat1.reci,Sat1.veci,et);
@@ -117,34 +149,98 @@ end
 % Station 2 with nosie
 i_visibility_noise_station2 = Station2.sat1.elevation*cspice_dpr()  > Station2.min_el ;
 Station2.sat1.visibility_noise = et(i_visibility_noise_station2);
-visibility(Station2.sat1.visibility_noise,Station2.name,Sat1.name,5)
+t = visibility(Station2.sat1.visibility_noise,Station2.name,Sat1.name,5);
 
 % Model for noise
-% Station 2
+% Station 2 [Km - Deg - Deg]
 Station2.sat1.rho_noise = mvnrnd(Station2.sat1.rho(i_visibility_noise_station2),ones(1,length(Station2.sat1.visibility_noise))*Station2.sigma_rho^2);
 Station2.sat1.azimuth_noise = mvnrnd(Station2.sat1.azimuth(i_visibility_noise_station2)*cspice_dpr(),ones(1,length(Station2.sat1.visibility_noise))*Station2.sigma_az^2);
 Station2.sat1.elevation_noise = mvnrnd(Station2.sat1.elevation(i_visibility_noise_station2)*cspice_dpr(),ones(1,length(Station2.sat1.visibility_noise))*Station2.sigma_el^2);
 
-y_meas = [Station2.sat1.rho_noise;Station2.sat1.azimuth_noise;Station2.sat1.elevation_noise];
-
-% Plot passes (azimuth and elevation) w noise
-figure()
-scatter(Station2.sat1.azimuth_noise, Station2.sat1.elevation_noise,'b','filled','DisplayName', Sat1.name)
-hold on;
-plot([-180 180],[Station2.min_el Station2.min_el],'--')
-axis([-180,180,0, 50])
-xlabel('Azimuth [deg]')
-ylabel('Elevation [deg]')
-legend('','Minimum Elevation');
+y_meas = [Station2.sat1.rho_noise;Station2.sat1.azimuth_noise;Station2.sat1.elevation_noise]; %[Km - Deg - Deg]
 
 
-%% 
+
+%% Point 1c
+
 % Unscented Transform
 alpha = 0.1;
 n = 6;
 lambda = alpha^2 * n;
 beta = 2;
+
+
+% Initialize Sigma points vector
+ x_sigma_sat1 = zeros(6,13);
+ 
+% Initialize vector containing last propagation of sigma points 
+xx_sigma_sat1 = zeros(6,13);
+
+sigma_mean_sat1 = zeros(6,2);
+sigma_cov_sat1 = zeros(6,6,2);
+
+% Weights for Mean
+W_m = zeros(1,2*n + 1);
+W_m(1) =  1 - n/(alpha^2*n);
+W_m(2:end) = 1/(2 * alpha^2 * n);
+
+% Weights for Covariance
+W_c = zeros(1,2*n + 1);
+W_c(1) = (2 - alpha^2 + beta) - n/(alpha^2 * n);
+W_c(2:end) = 1/(2 * alpha^2 * n);
+
+
+% Initialize first iteration values
+ sigma_cov_sat1(:,:,1) = P0_ref;
+ sigma_mean_sat1(:,1) = Sat1.x0_mean;
+ 
+% First iteration
+P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,1)) ;
+
+
+    for i = 1 : 2 * n + 1
+
+        % Compute Sigma Points
+         if(i==1)
+
+            x_sigma_sat1(:,i) = sigma_mean_sat1(:,1) ;
+ 
+
+         elseif(i>1 && i<8)
+
+            x_sigma_sat1(:,i) = sigma_mean_sat1(:,1) + P_sq1(:,i-1);
+    
+         else
+    
+            x_sigma_sat1(:,i) = sigma_mean_sat1(:,1) - P_sq1(:,i-n-1);
+         end
+
+        % Propagate Sigma points
+        [xx_sigma_sat1(:,i), ~, ~ ] = keplerian_propagator(et_ref,x_sigma_sat1(:,i), et0, 'Earth');
+
+        % Sample Mean
+        sigma_mean_sat1(:,2) = sigma_mean_sat1(:,2) + W_m(i) * xx_sigma_sat1(:,i); 
+        
+
+    end
+
+   
+    for i = 1: 2*n+1
+
+    sigma_cov_sat1(:,:,2) = sigma_cov_sat1(:,:,2) + W_c(i) * ((xx_sigma_sat1(:,i) - sigma_mean_sat1(:,2)) * (xx_sigma_sat1(:,i) - sigma_mean_sat1(:,2))');
+    
+    end
+
+    % Update Variance matrices
+    P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,2)) ;
+
+% Unscented Kalman Filter
+P0 = sigma_cov_sat1(:,:,end);
+
+%Noise Matrix
 R = diag([Station2.sigma_rho^2,Station2.sigma_az^2 , Station2.sigma_el^2]);
+
+% Full vector of times starting from t0
 time = [et0 ,Station2.sat1.visibility_noise];
 
 % Initialize Sigma points vector
@@ -207,13 +303,14 @@ for j = 2 : length(time)
         % Propagate Sigma points
         [Sat1.xx_sigma(:,i), ~, ~ ] = keplerian_propagator_J2(time(j-1),Sat1.x_sigma(:,i), time(j), 'Earth');
         
-        % Sigma points in Measurement space
+        % Sigma points in Measurement space %[Km - Rad - Rad]
         [Station2.sat1.rho_meas(i), Station2.sat1.azimuth_meas(i), Station2.sat1.elevation_meas(i)] = pointing(Station2.name,Sat1.xx_sigma(1:3,i),Sat1.xx_sigma(4:6,i),time(j));
        
         % Sample Mean
         Sat1.xk_m(:,j-1) = Sat1.xk_m(:,j-1) + W_m(i) * Sat1.xx_sigma(:,i); 
 
-        Sat1.yyk(:,i) = [Station2.sat1.rho_meas(i);  Station2.sat1.azimuth_meas(i); Station2.sat1.elevation_meas(i)];   
+        % [Km - Deg - Deg]
+        Sat1.yyk(:,i) = [Station2.sat1.rho_meas(i);  Station2.sat1.azimuth_meas(i)*cspice_dpr; Station2.sat1.elevation_meas(i)*cspice_dpr];   
 
        % Sample Mean of measurements
         Sat1.yk_m(:,j-1) = Sat1.yk_m(:,j-1) + W_m(i) * Sat1.yyk(:,i); 
@@ -224,19 +321,33 @@ for j = 2 : length(time)
     for i = 1: 2*n+1
 
     Sat1.Pk_m(:,:,j-1) = Sat1.Pk_m(:,:,j-1) + W_c(i) * ((Sat1.xx_sigma(:,i) - Sat1.xk_m(:,j-1)) * (Sat1.xx_sigma(:,i) - Sat1.xk_m(:,j-1))');
-    Sat1.Pyy(:,:,j-1) = Sat1.Pyy(:,:,j-1) + W_c(i) * ((Sat1.yyk(:,i) - Sat1.yk_m(:,j-1)) * (Sat1.yyk(:,i) - Sat1.yk_m(:,j-1))');
-    Sat1.Pxy(:,:,j-1) = Sat1.Pxy(:,:,j-1) + W_c(i) * ((Sat1.xx_sigma(:,i) - Sat1.xk_m(:,j-1)) * (Sat1.yyk(:,i) - Sat1.yk_m(:,j-1))');
+    
+    % Measurement differences
+    diff_rho = Sat1.yyk(1,i) - Sat1.yk_m(1,j-1);
+    diff_az = angdiff(Sat1.yyk(2,i)*cspice_rpd,Sat1.yk_m(2,j-1)*cspice_rpd);
+    diff_el = angdiff(Sat1.yyk(3,i)*cspice_rpd,Sat1.yk_m(3,j-1)*cspice_rpd);
+    diff_meas = [diff_rho ; diff_az ; diff_el];
+    
+    Sat1.Pyy(:,:,j-1) = Sat1.Pyy(:,:,j-1) + W_c(i) * ((diff_meas) * (diff_meas'));
+    Sat1.Pxy(:,:,j-1) = Sat1.Pxy(:,:,j-1) + W_c(i) * ((Sat1.xx_sigma(:,i) - Sat1.xk_m(:,j-1)) * (diff_meas'));
 
     end
     Sat1.Pyy(:,:,j-1) = Sat1.Pyy(:,:,j-1) + R;
 
     % Kalman Gain
-    Kk = Sat1.Pxy(:,:,j-1) * inv(Sat1.Pyy(:,:,j-1));
+    Kk = Sat1.Pxy(:,:,j-1) / (Sat1.Pyy(:,:,j-1));
+
     % Update State
     Sat1.xk_up(:,j) = Sat1.xk_m(:,j-1) + Kk * (y_meas(:,j-1) - Sat1.yk_m(:,j-1));
     Sat1.Pk_up(:,:,j) = Sat1.Pk_m(:,:,j-1) - Kk * Sat1.Pyy(:,:,j-1) * Kk';
+
+    % Force simmetry
     Sat1.Pk_up(:,:,j) = (Sat1.Pk_up(:,:,j) + Sat1.Pk_up(:,:,j)')/2;
+
+    % Update Matrix for sigma points
     Sat1.P_sq1 = sqrtm(lambda * Sat1.Pk_up(:,:,j));
+
+    % 3 Sigma for Pos and Vel
     Sat1.sigma_pos(j-1) = 3 * sqrt(max(eig( Sat1.Pk_up(1:3,1:3,j))));
     Sat1.sigma_vel(j-1) = 3 * sqrt(max(eig( Sat1.Pk_up(4:6,4:6,j)))); 
 
@@ -248,11 +359,56 @@ end
 State = [Sat1.reci(:,i_visibility_noise_station2); Sat1.veci(:,i_visibility_noise_station2)];
 
 Sat1.err_pos = Sat1.xk_up(1:3,2:end) - State(1:3,:);
-Sat1.norm_err_pos = vecnorm(Sat1.err_pos);
+Sat1.norm_err_pos = vecnorm(Sat1.err_pos,2);
 
 Sat1.err_vel = Sat1.xk_up(4:6,2:end) - State(4:6,:);
-Sat1.norm_err_vel = vecnorm(Sat1.err_vel);
+Sat1.norm_err_vel = vecnorm(Sat1.err_vel,2);
 
+%% Point 2a
+
+% Mean motion 
+Sat1.n = sqrt(GM/norm(Sat1.reci(:,1))^3);
+
+% Relative State at t0 in ECI frame
+Dx0_eci = [Sat2.reci(:,1) ; Sat2.veci(:,1)] - [Sat1.reci(:,1) ; Sat1.veci(:,1)];
+
+% Relative state in LVLH Frame
+[Dr0, Dv0] = ECI_2_LVLH(Dx0_eci(1:3),Dx0_eci(4:6));
+
+
+%% Point 2b
+Dxf = zeros(6,length(et));
+% First relative position
+Dxf(:,1) = [Dr0 ; Dv0];
+
+% Perform Propagation of CW equations
+for j = 2 : length(et)
+
+[Dxf(:,j) ,~, tt] = CW_propagation(et(j-1), Dxf(:,1) ,et(j),Sat1.n);
+
+end
+
+% Retrieve FFRF measurements from Geometry
+[Rho,Azimuth,Elevation] = FFRF_measurements(Dxf,FFRF);
+
+%% Point 2c
+% Time vector of 20 min after the time window
+post_visibility = et > t;
+interval = et(post_visibility);
+interval = interval:5:interval + 20*60;
+
+
+%% Plots
+
+% Plot passes (azimuth and elevation) w noise
+figure()
+scatter(Station2.sat1.azimuth_noise, Station2.sat1.elevation_noise,'b','filled','DisplayName', Sat1.name)
+hold on;
+plot([-180 180],[Station2.min_el Station2.min_el],'--')
+axis([-180,180,0, 50])
+xlabel('Azimuth [deg]')
+ylabel('Elevation [deg]')
+legend('','Minimum Elevation');
 
 figure()
 subplot(2,1,1)
@@ -273,13 +429,43 @@ legend('Velocity error','3 $\sigma$','Interpreter','latex');
 
 
 %% Functions
-function visibility(et,stationname,satname,tstep)
+function [r_LVLH, v_LVLH] = ECI_2_LVLH(r,v)
+
+
+% Compute Row vectors
+h = cross(r,v);
+i_ax = r/norm(r);
+k_ax = h/norm(h);
+j_ax = cross(k_ax,i_ax);
+
+% Rotation Matrix
+rotm_LVLH = [i_ax, j_ax, k_ax];
+
+% Position in LVLH Frame
+r_LVLH = rotm_LVLH * r;
+
+% Derivative of Matrix
+
+d_ez = 1/norm(r) * (v - dot(r,v) * r);
+d_ey = zeros(3,1);
+d_ex = cross(h,d_ez);
+
+dot_rotm_LVLH = [d_ex, d_ey , d_ez]';
+
+v_LVLH = dot_rotm_LVLH * r + rotm_LVLH * v;
+
+
+end
+
+function t = visibility(et,stationname,satname,tstep)
 %
 % This function evaluate the boundaries of the visibility windows given as
 % input the visibility times with a fixed step
 %
 %   INPUT:      -et: Time of visibility in ET   [s], [1,n]
 %               -tstep: Given step of et, (1 minute if not specified)
+%
+%   OUTPUT:     -i: Index where visibility window finish
 %
 %
 %   AUTHOT: Matteo Bono
@@ -302,6 +488,7 @@ while(flag==true && k<length(et)+1)
         fprintf('@%s for #%s: End of Visibility: %s\n',stationname,satname,cspice_et2utc(et(k-1),'C',3));
         fprintf('--------------------------------------------------------------------------\n');
        
+       
 
     end
     
@@ -315,12 +502,12 @@ while(flag==true && k<length(et)+1)
         %flag = false;
         fprintf('@%s for #%s: End of Visibility: %s\n',stationname,satname,cspice_et2utc(et(k),'C',3));
         fprintf('--------------------------------------------------------------------------\n');
+        t=et(k);
     end
 k = k+1;
 end
 end
-%
-%
+
 function [xf, tt, xx] = keplerian_propagator(t0, x0, t1 , attractor)
 %KEPLERIAN_PROPAGATOR Propagate a Keplerian Orbit 
 
@@ -337,8 +524,7 @@ options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-9; ones(3,1)*1e-12]);
 xf = xx(end,1:6)';
 
 end
-%
-%
+
 function [xf, tt, xx] = keplerian_propagator_J2(t0, x0, t1 , attractor)
 %KEPLERIAN_PROPAGATOR Propagate a Keplerian Orbit 
 
@@ -355,8 +541,7 @@ options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-9; ones(3,1)*1e-12]);
 xf = xx(end,1:6)';
 
 end
-%
-%
+
 function [dxdt] = keplerian_rhs_J2(t, x, GM)
 %KEPLERIAN_RHS_J2  Evaluates the right-hand-side of a 2-body (keplerian) propagator
 %   Evaluates the right-hand-side of a newtonian 2-body propagator with J2 perturbation.
@@ -401,8 +586,7 @@ dxdt(1:3) = x(4:6);
 dxdt(4:6) = - GM * rr /(dist*dist2) + aj2;
 
 end
-%
-%
+
 function [dxdt] = keplerian_rhs(~, x, GM)
 %KEPLERIAN_RHS  Evaluates the right-hand-side of a 2-body (keplerian) propagator
 %   Evaluates the right-hand-side of a newtonian 2-body propagator.
@@ -451,9 +635,7 @@ dxdt(1:3) = x(4:6);
 dxdt(4:6) = - GM * rr /(dist*dist2);
 
 end
-%
-%
-%
+
 function matlab_graphics()
 %{
 Set graphical values for better looking plots
@@ -503,9 +685,7 @@ set(0, 'defaultAxesColor', 'none');
 % fontSize
 set(0,'defaultAxesFontSize',16);
 end
-%
-%
-%
+
 function [rho, azimuth, elevation] = pointing(stationName,rr_ECI,vv_ECI,et)
 %
 % This function is used to compute the measurement of Range, Azimuth and
@@ -556,6 +736,71 @@ rv_station_sat_topo(:,i) = ROT_ECI2TOPO(:,:,i) * rv_station_sat_eci(:,i);
 
 end
 end
+
+function [xf , xx, tt] = CW_propagation(et0, x0,etf,n)
 %
+% This function propagates the relative motion of two satellites with CW
+% equation
+options = odeset('reltol', 1e-12, 'abstol', 1e-12*ones(6,1));
+
+% Perform integration
+[tt, xx] = ode78(@(t,x) CW_eq(t,x,n),[0 etf-et0], x0, options);
+
+% Extract state vector 
+xf = xx(end,1:6);
+
+end
+
+function [dxdt] = CW_eq(~,x,n)
+
+% Initialize right-hand-side
+dxdt = zeros(6,1);
+
+dxdt(1:3) = x(4:6);
+dxdt(4) = 3 * n^2 * x(1) + 2 * n * x(2)^2;
+dxdt(5) = -2 * n * x(4);
+dxdt(6) = -n*2 * x(3);
+
+end
+
+function [Rho,Azimuth,Elevation] = FFRF_measurements(Dx,FFRF)
+% This Function retrieve the measurements of Rho , Azimuth and Elevation of
+% the relative state vector between a first Spacecraft with FFRF on board
+% and a second one. The measurements are acquire in the LVLH Reference
+% frame solidal to the S/C N.1
 %
+%   INPUT: -Dx : Propagated Relative state                      [6,n]
+%          -FFRF : Struct with measurements noise parameters
 %
+%   OUTPUT: -Rho        [1,n]
+%           -Azimuth    [1,n]
+%           -Elevation  [1,n]
+%
+% Author : Matteo Bono
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Length of Time span
+n = length(Dx);
+
+% Initializations
+Azimuth = zeros(1,n);
+Elevation = zeros(1,n);
+Rho = zeros(1,n);
+
+for i = 1 : n
+
+    Azimuth(i) = atan2(Dx(2,i),Dx(1,i));
+    Elevation(i) = atan2(Dx(3,i),sqrt(Dx(1,i)^2 + Dx(2,i)^2));
+    Rho(i) = norm(Dx(1:3,i));
+
+end
+
+% Noise 
+Azimuth = mvnrnd(Azimuth,ones(1,n) * FFRF.sigma_az^2);
+Elevation = mvnrnd(Elevation, ones(1,n) * FFRF.sigma_el^2);
+Rho = mvnrnd(Rho,ones(1,n) * FFRF.sigma_rho^2);
+
+
+end
+
+
+
