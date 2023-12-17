@@ -424,12 +424,11 @@ elevation2 = rho2;
 for k=1:length(t_span1)
 
     [~,x_prop1] = ode113(fun,[t0 t_span1(k)],x,options);
-    [~,x_prop2] = ode113(fun,[t0 t_span2(k)],x,options);
+    
 
     % Compute predicted measurements 
     [rho1(k), azimuth1(k), elevation1(k)] = pointing(Station1.name,x_prop1(end,1:3)',x_prop1(end,4:6)',t_span1(k));
-    % Compute predicted measurements 
-    [rho2(k), azimuth2(k), elevation2(k)] = pointing(Station2.name,x_prop2(end,1:3)',x_prop2(end,4:6)',t_span2(k));
+    
 
     diff_rho1(k) = rho1(k) - meas_real1(k,1);
     diff_az1(k) = angdiff(azimuth1(k),meas_real1(k,2)*cspice_rpd);
@@ -440,6 +439,10 @@ for k=1:length(t_span1)
 end
 
 for k=1:length(t_span2)
+    
+    [~,x_prop2] = ode113(fun,[t0 t_span2(k)],x,options);
+    % Compute predicted measurements 
+    [rho2(k), azimuth2(k), elevation2(k)] = pointing(Station2.name,x_prop2(end,1:3)',x_prop2(end,4:6)',t_span2(k));
 
     diff_rho2(k) = rho2(k) - meas_real2(k,1);
     diff_az2(k) = angdiff(azimuth2(k),meas_real2(k,2)*cspice_rpd);
