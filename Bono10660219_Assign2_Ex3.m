@@ -32,6 +32,8 @@ Sat1.r0_mean = [4622.232026629; 5399.3369588058; -0.0212138165769957];
 Sat1.v0_mean = [0.812221125483763; -0.721512914578826; 7.42665302729053];
 Sat1.x0_mean = [Sat1.r0_mean; Sat1.v0_mean];
 
+
+
 % Covariance Matrix
  P0_ref = [   [5.6e-7  3.5e-7  -7.1e-8 
            3.5e-7  9.7e-7   7.6e-8      
@@ -159,6 +161,8 @@ Station2.sat1.elevation_noise = mvnrnd(Station2.sat1.elevation(i_visibility_nois
 
 y_meas = [Station2.sat1.rho_noise;Station2.sat1.azimuth_noise;Station2.sat1.elevation_noise]; %[Km - Deg - Deg]
 
+% Mean motion 
+Sat1.n = sqrt(GM/norm(Sat1.reci(:,1))^3);
 
 
 %% Point 1c
@@ -191,10 +195,10 @@ W_c(2:end) = 1/(2 * alpha^2 * n);
 
 
 % Initialize first iteration values
- sigma_cov_sat1(:,:,1) = P0_ref;
+ sigma_cov_sat1(:,:,1) = P0_ref*1e4;
  sigma_mean_sat1(:,1) = Sat1.x0_mean;
  
-% First iteration
+% First iteration to reach t0 from t_ref
 P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,1)) ;
 
 
@@ -234,7 +238,7 @@ P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,1)) ;
     % Update Variance matrices
     P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,2)) ;
 
-% Unscented Kalman Filter
+
 P0 = sigma_cov_sat1(:,:,end);
 
 %Noise Matrix
@@ -243,118 +247,9 @@ R = diag([Station2.sigma_rho^2,Station2.sigma_az^2 , Station2.sigma_el^2]);
 % Full vector of times starting from t0
 time = [et0 ,Station2.sat1.visibility_noise];
 
-% Initialize Sigma points vector
-Sat1.x_sigma = zeros(6,13);
-  
-% Initialize vector containing last propagation of sigma points 
-Sat1.xx_sigma = zeros(6,13);
+% Unscented Kalman Filter
+[Sat1.xk_up,Sat1.Pk_up,Sat1.sigma_pos,Sat1.sigma_vel] = UKF(time,P0,R,[Sat1.reci(:,1);Sat1.veci(:,1)],y_meas,Station2,Sat1.n,0);
 
-% Initialization vector of mean values 
-Sat1.xk_m = zeros(n,length(time)-1); 
-Sat1.yk_m = zeros(3,length(time)-1);
-Sat1.yyk = zeros(3,2*n+1);
-Sat1.xk_up = zeros(6,length(time));
-
-
-% Initialization vector of covariance matrices for every step
-Sat1.Pk_m = zeros(n,n,length(time)-1);
-Sat1.Pyy = zeros(3,3,length(time)-1);
-Sat1.Pxy = zeros(6,3,length(time)-1);
-
-
-% Weights for Mean
-W_m = zeros(1,2*n + 1);
-W_m(1) =  1 - n/(alpha^2*n);
-W_m(2:end) = 1/(2 * alpha^2 * n);
-
-% Weights for Covariance
-W_c = zeros(1,2*n + 1);
-W_c(1) = (2 - alpha^2 + beta) - n/(alpha^2 * n);
-W_c(2:end) = 1/(2 * alpha^2 * n);
-
-
-% Initialize first iteration values
- Sat1.Pk_up(:,:,1) =  1e4 * P0;
- Sat1.xk_up(:,1) = [Sat1.reci(:,1);Sat1.veci(:,1)];
-
-% First iteration
-Sat1.P_sq1 = sqrtm(lambda * Sat1.Pk_up(:,:,1));
-
-
-for j = 2 : length(time)
-
-    for i = 1 : 2 * n + 1
-
-        % Compute Sigma Points
-         if(i==1)
-
-            Sat1.x_sigma(:,i) = Sat1.xk_up(:,j-1) ;
-
-         elseif(i>1 && i<8)
-
-            Sat1.x_sigma(:,i) = Sat1.xk_up(:,j-1) + Sat1.P_sq1(:,i-1);
-            
-         else
-    
-            Sat1.x_sigma(:,i) = Sat1.xk_up(:,j-1) - Sat1.P_sq1(:,i-n-1);
-
-         end
-
-        % Propagate Sigma points
-        [Sat1.xx_sigma(:,i), ~, ~ ] = keplerian_propagator_J2(time(j-1),Sat1.x_sigma(:,i), time(j), 'Earth');
-        
-        % Sigma points in Measurement space %[Km - Rad - Rad]
-        [Station2.sat1.rho_meas(i), Station2.sat1.azimuth_meas(i), Station2.sat1.elevation_meas(i)] = pointing(Station2.name,Sat1.xx_sigma(1:3,i),Sat1.xx_sigma(4:6,i),time(j));
-       
-        % Sample Mean
-        Sat1.xk_m(:,j-1) = Sat1.xk_m(:,j-1) + W_m(i) * Sat1.xx_sigma(:,i); 
-
-        % [Km - Deg - Deg]
-        Sat1.yyk(:,i) = [Station2.sat1.rho_meas(i);  Station2.sat1.azimuth_meas(i)*cspice_dpr; Station2.sat1.elevation_meas(i)*cspice_dpr];   
-
-       % Sample Mean of measurements
-        Sat1.yk_m(:,j-1) = Sat1.yk_m(:,j-1) + W_m(i) * Sat1.yyk(:,i); 
-        
-    end
-
-   
-    for i = 1: 2*n+1
-
-    Sat1.Pk_m(:,:,j-1) = Sat1.Pk_m(:,:,j-1) + W_c(i) * ((Sat1.xx_sigma(:,i) - Sat1.xk_m(:,j-1)) * (Sat1.xx_sigma(:,i) - Sat1.xk_m(:,j-1))');
-    
-    % Measurement differences
-    diff_rho = Sat1.yyk(1,i) - Sat1.yk_m(1,j-1);
-    diff_az = angdiff(Sat1.yyk(2,i)*cspice_rpd,Sat1.yk_m(2,j-1)*cspice_rpd);
-    diff_el = angdiff(Sat1.yyk(3,i)*cspice_rpd,Sat1.yk_m(3,j-1)*cspice_rpd);
-    diff_meas = [diff_rho ; diff_az ; diff_el];
-    
-    Sat1.Pyy(:,:,j-1) = Sat1.Pyy(:,:,j-1) + W_c(i) * ((diff_meas) * (diff_meas'));
-    Sat1.Pxy(:,:,j-1) = Sat1.Pxy(:,:,j-1) + W_c(i) * ((Sat1.xx_sigma(:,i) - Sat1.xk_m(:,j-1)) * (diff_meas'));
-
-    end
-    Sat1.Pyy(:,:,j-1) = Sat1.Pyy(:,:,j-1) + R;
-
-    % Kalman Gain
-    Kk = Sat1.Pxy(:,:,j-1) / (Sat1.Pyy(:,:,j-1));
-
-    % Update State
-    Sat1.xk_up(:,j) = Sat1.xk_m(:,j-1) + Kk * (y_meas(:,j-1) - Sat1.yk_m(:,j-1));
-    Sat1.Pk_up(:,:,j) = Sat1.Pk_m(:,:,j-1) - Kk * Sat1.Pyy(:,:,j-1) * Kk';
-
-    % Force simmetry
-    Sat1.Pk_up(:,:,j) = (Sat1.Pk_up(:,:,j) + Sat1.Pk_up(:,:,j)')/2;
-
-    % Update Matrix for sigma points
-    Sat1.P_sq1 = sqrtm(lambda * Sat1.Pk_up(:,:,j));
-
-    % 3 Sigma for Pos and Vel
-    Sat1.sigma_pos(j-1) = 3 * sqrt(max(eig( Sat1.Pk_up(1:3,1:3,j))));
-    Sat1.sigma_vel(j-1) = 3 * sqrt(max(eig( Sat1.Pk_up(4:6,4:6,j)))); 
-
-    
-  
- 
-end
 
 State = [Sat1.reci(:,i_visibility_noise_station2); Sat1.veci(:,i_visibility_noise_station2)];
 
@@ -366,8 +261,7 @@ Sat1.norm_err_vel = vecnorm(Sat1.err_vel,2);
 
 %% Point 2a
 
-% Mean motion 
-Sat1.n = sqrt(GM/norm(Sat1.reci(:,1))^3);
+
 
 % Relative State at t0 in ECI frame
 Dx0_eci = [Sat2.reci(:,1) ; Sat2.veci(:,1)] - [Sat1.reci(:,1) ; Sat1.veci(:,1)];
@@ -384,19 +278,50 @@ Dxf(:,1) = [Dr0 ; Dv0];
 % Perform Propagation of CW equations
 for j = 2 : length(et)
 
-[Dxf(:,j) ,~, tt] = CW_propagation(et(j-1), Dxf(:,1) ,et(j),Sat1.n);
+[Dxf(:,j) ,~, tt] = CW_propagation(et(j-1), Dxf(:,j-1) ,et(j),Sat1.n);
 
 end
 
 % Retrieve FFRF measurements from Geometry
-[Rho,Azimuth,Elevation] = FFRF_measurements(Dxf,FFRF);
+[Rho,Azimuth,Elevation] = FFRF_measurements(Dxf);
+
+% Noise 
+Azimuth = mvnrnd(Azimuth*cspice_dpr,ones(1,length(et)) * FFRF.sigma_az^2);
+Elevation = mvnrnd(Elevation*cspice_dpr, ones(1,length(et)) * FFRF.sigma_el^2);
+Rho = mvnrnd(Rho,ones(1,length(et)) * FFRF.sigma_rho^2);
 
 %% Point 2c
-% Time vector of 20 min after the time window
-post_visibility = et > t;
-interval = et(post_visibility);
-interval = interval:5:interval + 20*60;
 
+post_visibility = et > t;
+% Time vector of 20 min after the time window
+interval = et(t+1):5:et(t+1) + 20*60;
+
+% Initial covariance
+DP0 = diag([0.01, 0.01, 0.1, 0.0001, 0.0001, 0.001]) ;
+
+% Noise Matrix for FFRF system
+FFRF.R = diag([FFRF.sigma_rho^2,FFRF.sigma_az^2 , FFRF.sigma_el^2]);
+
+% retrieve measurements during the time interval
+rho_meas = Rho(t+1: t + length(interval));
+az_meas = Azimuth(t+1: t + length(interval));
+el_meas = Elevation(t+1: t + length(interval));
+FFRF.meas = [rho_meas;az_meas;el_meas];
+
+% Retrieve state in the initial time
+DeltaX0 = Dxf(:,t+1);
+
+% Unscented Kalman Filter
+[Dxx,DP,Delta_sigma_pos,Delta_sigma_vel] = UKF(interval,DP0,FFRF.R,DeltaX0,FFRF.meas,Station2,Sat1.n,1); %Flag to 1 for FFRF
+
+% Computing errors
+rel_states = Dxf(:,t+1:t+length(interval));
+
+rel_err_pos = Dxx(1:3,:) - rel_states(1:3,:);
+rel_norm_err_pos = vecnorm(rel_err_pos,2);
+
+rel_err_vel = Dxx(4:6,:) - rel_states(4:6,:);
+rel_norm_err_vel = vecnorm(rel_err_vel,2);
 
 %% Plots
 
@@ -410,21 +335,34 @@ xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
 
+% Errors for UKF Mango
 figure()
 subplot(2,1,1)
 plot(Station2.sat1.visibility_noise,Sat1.norm_err_pos,'b','LineWidth',2);
 hold on;
-plot(Station2.sat1.visibility_noise,Sat1.sigma_pos,'--r','LineWidth',2);
+plot(Station2.sat1.visibility_noise,Sat1.sigma_pos(2:end),'--r','LineWidth',2);
 legend('Position error','3 $\sigma$','Interpreter','latex');
-
-
 
 subplot(2,1,2)
 plot(Station2.sat1.visibility_noise,Sat1.norm_err_vel,'b','LineWidth',2);
 hold on;
-plot(Station2.sat1.visibility_noise,Sat1.sigma_vel,'--r','LineWidth',2);
+plot(Station2.sat1.visibility_noise,Sat1.sigma_vel(2:end),'--r','LineWidth',2);
 legend('Velocity error','3 $\sigma$','Interpreter','latex');
 
+% Errors for UKF FFRF system
+figure()
+subplot(2,1,1)
+plot(interval,rel_norm_err_pos,'b','LineWidth',2);
+hold on;
+plot(interval,Delta_sigma_pos,'--r','LineWidth',2);
+legend('Position error','3 $\sigma$','Interpreter','latex');
+title('FFRF Position');
+subplot(2,1,2)
+plot(interval,rel_norm_err_vel,'b','LineWidth',2);
+hold on;
+plot(interval,Delta_sigma_vel,'--r','LineWidth',2);
+legend('Velocity error','3 $\sigma$','Interpreter','latex');
+title('FFRF Velocity');
 
 
 
@@ -458,19 +396,19 @@ v_LVLH = dot_rotm_LVLH * r + rotm_LVLH * v;
 end
 
 function t = visibility(et,stationname,satname,tstep)
-%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % This function evaluate the boundaries of the visibility windows given as
 % input the visibility times with a fixed step
 %
 %   INPUT:      -et: Time of visibility in ET   [s], [1,n]
 %               -tstep: Given step of et, (1 minute if not specified)
 %
-%   OUTPUT:     -i: Index where visibility window finish
+%   OUTPUT:     -t: Index where visibility window finish
 %
 %
 %   AUTHOT: Matteo Bono
 %
-%   
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
 if(nargin<4)
     tstep = 60;
 end
@@ -502,7 +440,7 @@ while(flag==true && k<length(et)+1)
         %flag = false;
         fprintf('@%s for #%s: End of Visibility: %s\n',stationname,satname,cspice_et2utc(et(k),'C',3));
         fprintf('--------------------------------------------------------------------------\n');
-        t=et(k);
+        t=k;
     end
 k = k+1;
 end
@@ -687,7 +625,7 @@ set(0,'defaultAxesFontSize',16);
 end
 
 function [rho, azimuth, elevation] = pointing(stationName,rr_ECI,vv_ECI,et)
-%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % This function is used to compute the measurement of Range, Azimuth and
 % Elevation of the propagated state of a Satellite with respect to a given
 % Ground Station
@@ -704,6 +642,7 @@ function [rho, azimuth, elevation] = pointing(stationName,rr_ECI,vv_ECI,et)
 %           -Elevation: Elevation angle in Degree                   [1,n]
 %
 % Author:   Matteo Bono
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Initialization
 n = length(et);
@@ -757,13 +696,14 @@ function [dxdt] = CW_eq(~,x,n)
 dxdt = zeros(6,1);
 
 dxdt(1:3) = x(4:6);
-dxdt(4) = 3 * n^2 * x(1) + 2 * n * x(2)^2;
+dxdt(4) = 3 * n^2 * x(1) + 2 * n * x(5)^2;
 dxdt(5) = -2 * n * x(4);
-dxdt(6) = -n*2 * x(3);
+dxdt(6) = -n^2 * x(3);
 
 end
 
-function [Rho,Azimuth,Elevation] = FFRF_measurements(Dx,FFRF)
+function [Rho,Azimuth,Elevation] = FFRF_measurements(Dx)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % This Function retrieve the measurements of Rho , Azimuth and Elevation of
 % the relative state vector between a first Spacecraft with FFRF on board
 % and a second one. The measurements are acquire in the LVLH Reference
@@ -778,8 +718,9 @@ function [Rho,Azimuth,Elevation] = FFRF_measurements(Dx,FFRF)
 %
 % Author : Matteo Bono
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 % Length of Time span
-n = length(Dx);
+n = size(Dx,2);
 
 % Initializations
 Azimuth = zeros(1,n);
@@ -794,13 +735,168 @@ for i = 1 : n
 
 end
 
-% Noise 
-Azimuth = mvnrnd(Azimuth,ones(1,n) * FFRF.sigma_az^2);
-Elevation = mvnrnd(Elevation, ones(1,n) * FFRF.sigma_el^2);
-Rho = mvnrnd(Rho,ones(1,n) * FFRF.sigma_rho^2);
+
 
 
 end
 
+function [xk_up,Pk_up,sigma_pos,sigma_vel] = UKF(time,P0,R,x0,y_meas,station,N,flag)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This function represent the Unscented Kalman Filter.
+%
+%       INPUT: -time: vector of time
+%              -P0: initial covariance matrix
+%              -R: Diagonal Measurements Noise matrix 
+%              -x0: Initial State [6,1]
+%              -y_meas: Measurements acquired [3,length(time)]
+%              -station: Struct of Station
+%              -flag: 1 for LVLH relative propagation, 0 for ECI
+%              -N: Mean motion of Satellite 1
+%
+%      OUTPUT: -xk_up: estimated states [6,length(time)]
+%              -Pk_up: estimated covariance [6,6,length(time)]
+%              -sigma_pos: 3sigma for Pos
+%              -sigma_vel: 3sigma for Vel
+%
+% Author: Matteo Bono
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Parametersd of UT
+alpha = 0.1;
+n = 6;
+lambda = alpha^2 * n;
+beta = 2;
+
+% Weights for Mean
+W_m = zeros(1,2*n + 1);
+W_m(1) =  1 - n/(alpha^2*n);
+W_m(2:end) = 1/(2 * alpha^2 * n);
+
+% Weights for Covariance
+W_c = zeros(1,2*n + 1);
+W_c(1) = (2 - alpha^2 + beta) - n/(alpha^2 * n);
+W_c(2:end) = 1/(2 * alpha^2 * n);
+
+% Initialize Sigma points vector
+x_sigma = zeros(n,13);
+  
+% Initialize vector containing last propagation of sigma points 
+xx_sigma = zeros(n,13);
+
+% Initialization vector of mean values 
+xk_m = zeros(n,length(time)-1); 
+yk_m = zeros(3,length(time)-1);
+yyk = zeros(3,2*n+1);
+xk_up = zeros(n,length(time));
+
+
+% Initialization vector of covariance matrices for every step
+Pk_m = zeros(n,n,length(time)-1);
+Pyy = zeros(3,3,length(time)-1);
+Pxy = zeros(n,3,length(time)-1);
+
+% Initialization of measurements
+rho_meas = zeros(1,2*n+1);
+azimuth_meas = zeros(1,2*n+1);
+elevation_meas = zeros(1,2*n+1);
+
+sigma_pos = zeros(1,length(time));
+sigma_vel = zeros(1,length(time));
+
+
+% Initialize first iteration values
+ Pk_up(:,:,1) = P0;
+ xk_up(:,1) = x0;
+ sigma_pos(:,:,1) =  3 * sqrt(max(eig(P0(1:3,1:3))));
+ sigma_vel(:,:,1) =  3 * sqrt(max(eig(P0(4:6,4:6))));
+
+% First iteration
+P_sq1 = sqrtm(lambda * Pk_up(:,:,1));
+
+
+for j = 2 : length(time)
+
+    for i = 1 : 2 * 6 + 1
+
+        % Compute Sigma Points
+         if(i==1)
+
+            x_sigma(:,i) = xk_up(:,j-1) ;
+
+         elseif(i>1 && i<8)
+
+            x_sigma(:,i) = xk_up(:,j-1) + P_sq1(:,i-1);
+            
+         else
+    
+            x_sigma(:,i) = xk_up(:,j-1) - P_sq1(:,i-n-1);
+
+         end
+
+     if(flag==0)
+        % Propagate Sigma points
+        [xx_sigma(:,i), ~, ~ ] = keplerian_propagator_J2(time(j-1),x_sigma(:,i), time(j), 'Earth');
+        
+        % Sigma points in Measurement space %[Km - Rad - Rad]
+       
+        [rho_meas(i), azimuth_meas(i), elevation_meas(i)] = pointing(station.name,xx_sigma(1:3,i),xx_sigma(4:6,i),time(j));
+     else
+
+         [xx_sigma(:,i) ,~, ~] = CW_propagation(time(j-1), x_sigma(:,i) ,time(j),N);
+
+         % Retrieve FFRF measurements from Geometry
+         [rho_meas(i),azimuth_meas(i),elevation_meas(i)] = FFRF_measurements(xx_sigma(:,i));
+
+     end
+        % Sample Mean
+        xk_m(:,j-1) = xk_m(:,j-1) + W_m(i) * xx_sigma(:,i); 
+
+        % [Km - Deg - Deg]
+        yyk(:,i) = [rho_meas(i);  azimuth_meas(i)*cspice_dpr; elevation_meas(i)*cspice_dpr];   
+
+       % Sample Mean of measurements
+        yk_m(:,j-1) = yk_m(:,j-1) + W_m(i) * yyk(:,i); 
+        
+    end
+
+   
+    for i = 1: 2*6+1
+
+    Pk_m(:,:,j-1) = Pk_m(:,:,j-1) + W_c(i) * ((xx_sigma(:,i) - xk_m(:,j-1)) * (xx_sigma(:,i) - xk_m(:,j-1))');
+    
+    % Measurement differences
+    diff_rho = yyk(1,i) - yk_m(1,j-1);
+    diff_az = angdiff(yyk(2,i)*cspice_rpd,yk_m(2,j-1)*cspice_rpd);
+    diff_el = angdiff(yyk(3,i)*cspice_rpd,yk_m(3,j-1)*cspice_rpd);
+    diff_meas = [diff_rho ; diff_az*cspice_dpr ; diff_el*cspice_dpr];
+    
+    Pyy(:,:,j-1) = Pyy(:,:,j-1) + W_c(i) * ((diff_meas) * (diff_meas'));
+    Pxy(:,:,j-1) = Pxy(:,:,j-1) + W_c(i) * ((xx_sigma(:,i) - xk_m(:,j-1)) * (diff_meas'));
+
+    end
+    Pyy(:,:,j-1) = Pyy(:,:,j-1) + R;
+
+    % Kalman Gain
+    Kk = Pxy(:,:,j-1) / (Pyy(:,:,j-1));
+
+    % Update State
+    xk_up(:,j) = xk_m(:,j-1) + Kk * (y_meas(:,j-1) - yk_m(:,j-1));
+    Pk_up(:,:,j) = Pk_m(:,:,j-1) - Kk * Pyy(:,:,j-1) * Kk';
+
+    % Force simmetry
+    Pk_up(:,:,j) = (Pk_up(:,:,j) + Pk_up(:,:,j)')/2;
+
+    % Update Matrix for sigma points
+    P_sq1 = sqrtm(lambda * Pk_up(:,:,j));
+
+    % 3 Sigma for Pos and Vel
+    sigma_pos(j) = 3 * sqrt(max(eig( Pk_up(1:3,1:3,j))));
+    sigma_vel(j) = 3 * sqrt(max(eig( Pk_up(4:6,4:6,j)))); 
+
+    
+  
+ 
+end
+
+end
 
