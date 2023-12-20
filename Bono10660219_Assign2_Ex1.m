@@ -334,7 +334,7 @@ end
 
 %% Point 3
 
-num_sim  = 200;
+num_sim  = 400;
 
 
 % Initializations
@@ -504,27 +504,33 @@ figure()
 subplot(1,2,1)
 plot(tp,cov_pos_sat1_Lin,tp,cov_pos_sat1_UT,tp,cov_pos_sat1_mc,'LineWidth',2)
 xlabel('Orbital Period');
-title('Position Covariance for Satellite Mango')
+ylabel('[-]');
+title('3$\sigma$ Pos for Mango','Interpreter','Latex');
 legend('LinCov','UT','MC');
 
 subplot(1,2,2)
 plot(tp,cov_pos_sat2_Lin,tp,cov_pos_sat2_UT,tp,cov_pos_sat2_mc,'LineWidth',2)
 xlabel('Orbital Period');
-title('Position Covariance for Satellite Tango')
+ylabel('[-]');
+title('3$\sigma$ Pos for Tango','Interpreter','Latex');
 legend('LinCov','UT','MC');
 
 figure()
 subplot(1,2,1)
 plot(tp,cov_vel_sat1_Lin,tp,cov_vel_sat1_UT,tp,cov_vel_sat1_mc,'LineWidth',2)
 xlabel('Orbital Period');
-title('Velocity Covariance for Satellite Mango')
+ylabel('[-]');
+title('3$\sigma$ Vel for Mango','Interpreter','Latex');
 legend('LinCov','UT','MC');
+
 
 subplot(1,2,2)
 plot(tp,cov_vel_sat2_Lin,tp,cov_vel_sat2_UT,tp,cov_vel_sat2_mc,'LineWidth',2)
 xlabel('Orbital Period');
-title('Velocity Covariance for Satellite Tango')
+ylabel('[-]');
+title('3$\sigma$ Vel for Tango','Interpreter','Latex');
 legend('LinCov','UT','MC');
+
 
 % MC Points in Orbital Plane
 figure()
@@ -538,6 +544,9 @@ drawEllipse(mc_mean_lvlh_sat1(1:2,1), mc_cov_sat1_lvlh(1:2,1:2,1),3)
 drawEllipse(mc_mean_lvlh_sat1(1:2,4), mc_cov_sat1_lvlh(1:2,1:2,4),3)
 drawEllipse(mc_mean_lvlh_sat1(1:2,end), mc_cov_sat1_lvlh(1:2,1:2,end),3)
 legend('','','','Mango:Covariance @Rev:1','Mango:Covariance @Rev:4','Mango:Covariance at tf');
+xlabel('X[Km]');
+ylabel('Y[Km]');
+title('MC: Mango');
 
 subplot(1,2,2)
 hold on;
@@ -548,9 +557,10 @@ scatter(r_mc2(:,1,end),r_mc2(:,2,end),14);
 drawEllipse(mc_mean_lvlh_sat2(1:2,1), mc_cov_sat2_lvlh(1:2,1:2,1),3)
 drawEllipse(mc_mean_lvlh_sat2(1:2,4), mc_cov_sat2_lvlh(1:2,1:2,4),3)
 drawEllipse(mc_mean_lvlh_sat2(1:2,end), mc_cov_sat2_lvlh(1:2,1:2,end),3)
-
 legend('','','','Tango:Covariance @Rev:1','Tango:Covariance @Rev:4','Tango:Covariance at tf');
-title('MC');
+title('MC: Tango');
+xlabel('X[Km]');
+ylabel('Y[Km]');
 
 % UT Points
 figure()
@@ -565,6 +575,8 @@ drawEllipse(sigma_mean1_lvlh(1:2,4), sigma_cov1_lvlh(1:2,1:2,4),3)
 drawEllipse(sigma_mean1_lvlh(1:2,end), sigma_cov1_lvlh(1:2,1:2,end),3)
 legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
 title('UT: Mango');
+xlabel('X[Km]');
+ylabel('Y[Km]');
 
 subplot(1,2,2)
 hold on;
@@ -577,7 +589,8 @@ drawEllipse(sigma_mean2_lvlh(1:2,4), sigma_cov2_lvlh(1:2,1:2,4),3)
 drawEllipse(sigma_mean2_lvlh(1:2,end), sigma_cov2_lvlh(1:2,1:2,end),3)
 legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
 title('UT: Tango');
-
+xlabel('X[Km]');
+ylabel('Y[Km]');
 
 %LinCov
 figure()
@@ -592,6 +605,8 @@ drawEllipse(r_lin1(1:2,4), P_lvlh_sat1(1:2,1:2,4),3)
 drawEllipse(r_lin1(1:2,end), P_lvlh_sat1(1:2,1:2,end),3)
 legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
 title('LinCov: Mango');
+xlabel('X[Km]');
+ylabel('Y[Km]');
 
 subplot(1,2,2)
 hold on;
@@ -605,6 +620,8 @@ drawEllipse(r_lin2(1:2,end), P_lvlh_sat2(1:2,1:2,end),3)
 
 legend('','','','Covariance @Rev:1','Covariance @Rev:4','Covariance at tf');
 title('LinCov: Tango');
+xlabel('X[Km]');
+ylabel('Y[Km]');
 %% Functions
 
 function [xf, PHI_f, tt, xx ] = keplerian_propagator_STM( et0,x0, et1 , attractor)
@@ -619,7 +636,7 @@ options_STM = odeset('reltol', 1e-12, 'abstol', 1e-12*ones(42,1));
 x0Phi0 = [ x0 ; reshape(eye(6),36,1) ];
 
 % Perform integration
-[tt, xx] = ode78(@(t,x) keplerian_STM_rhs(t,x,GM),[0 et1-et0], x0Phi0, options_STM);
+[tt, xx] = ode78(@(t,x) keplerian_STM_rhs(t,x,GM),[et0 et1], x0Phi0, options_STM);
 
 % Extract state vector 
 xf = xx(end,1:6);
@@ -700,7 +717,7 @@ function [xf, tt, xx] = keplerian_propagator(t0, x0, t1 , attractor)
 options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-8; ones(3,1)*1e-11]);
 
 % Perform integration
-[tt, xx] = ode78(@(t,x) keplerian_rhs(t,x,GM), [0 t1-t0], x0, options);
+[tt, xx] = ode78(@(t,x) keplerian_rhs(t,x,GM), [t0 t1], x0, options);
 
 % Extract state vector 
 xf = xx(end,1:6)';

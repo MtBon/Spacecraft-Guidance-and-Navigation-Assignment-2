@@ -528,7 +528,7 @@ function [xf, tt, xx] = keplerian_propagator(t0, x0, t1 , attractor)
 options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-9; ones(3,1)*1e-12]);
 
 % Perform integration
-[tt, xx] = ode78(@(t,x) keplerian_rhs(t,x,GM), [0 t1-t0], x0, options);
+[tt, xx] = ode78(@(t,x) keplerian_rhs(t,x,GM), [t0 t1], x0, options);
 
 % Extract state vector 
 xf = xx(end,1:6)';

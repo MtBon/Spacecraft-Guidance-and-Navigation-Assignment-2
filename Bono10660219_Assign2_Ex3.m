@@ -10,7 +10,7 @@ clc; clearvars; close all
 addpath('sgp4');
 addpath('functions');
 addpath('kernels');
-addpath('..\mice\');
+addpath(genpath('..\mice\'));
 % Load spice kernels
 cspice_furnsh('assignment02.tm');
 
@@ -25,7 +25,8 @@ whichconst =  72;  % WGS72 constants (radius, gravitational parameter)
 
 % Satellite 1
 Sat1.name = 'Mango';
-Sat1.ID = 36599;
+% Satellite 2
+Sat2.name = 'Tango';
 
 % Mean Initial State for Satellite Mango
 Sat1.r0_mean = [4622.232026629; 5399.3369588058; -0.0212138165769957];
@@ -86,7 +87,7 @@ end
 
 
 % Compute antenna angles, satellite range wrt Station 2
-[Station2.sat1.rho, Station2.sat1.azimuth, Station2.sat1.elevation] = pointing(Station2.name,Sat1.xx(:,1:3)',Sat1.xx(:,4:6)',et);
+[Station2.sat1.rho_2bp, Station2.sat1.azimuth_2bp, Station2.sat1.elevation_2bp] = pointing(Station2.name,Sat1.xx(:,1:3)',Sat1.xx(:,4:6)',et);
 
 %% Point 1b
 
@@ -148,7 +149,7 @@ GM = cspice_bodvrd('Earth','GM',1);
 % Compute antenna angles, satellite range and range-rate wrt Station 2
 [Station2.sat1.rho, Station2.sat1.azimuth, Station2.sat1.elevation] = pointing(Station2.name,Sat1.reci,Sat1.veci,et);
 
-% Station 2 with nosie
+% Station 2 with noise
 i_visibility_noise_station2 = Station2.sat1.elevation*cspice_dpr()  > Station2.min_el ;
 Station2.sat1.visibility_noise = et(i_visibility_noise_station2);
 t = visibility(Station2.sat1.visibility_noise,Station2.name,Sat1.name,5);
@@ -235,8 +236,6 @@ P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,1)) ;
     
     end
 
-    % Update Variance matrices
-    P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,2)) ;
 
 
 P0 = sigma_cov_sat1(:,:,end);
@@ -262,18 +261,19 @@ Sat1.norm_err_vel = vecnorm(Sat1.err_vel,2);
 %% Point 2a
 
 
-
 % Relative State at t0 in ECI frame
 Dx0_eci = [Sat2.reci(:,1) ; Sat2.veci(:,1)] - [Sat1.reci(:,1) ; Sat1.veci(:,1)];
 
-% Relative state in LVLH Frame
-[Dr0, Dv0] = ECI_2_LVLH(Dx0_eci(1:3),Dx0_eci(4:6));
+% Retrieve rotation matrix for Mango LVLH Frame
+[rotm_eci_lvlh] = ECI_2_LVLH(Sat1.reci(:,1),Sat1.veci(:,1),Sat1.n);
 
+% Relative state in LVLH Frame
+Dx0 = rotm_eci_lvlh * Dx0_eci;
 
 %% Point 2b
 Dxf = zeros(6,length(et));
 % First relative position
-Dxf(:,1) = [Dr0 ; Dv0];
+Dxf(:,1) = Dx0;
 
 % Perform Propagation of CW equations
 for j = 2 : length(et)
@@ -291,37 +291,137 @@ Elevation = mvnrnd(Elevation*cspice_dpr, ones(1,length(et)) * FFRF.sigma_el^2);
 Rho = mvnrnd(Rho,ones(1,length(et)) * FFRF.sigma_rho^2);
 
 %% Point 2c
-
 post_visibility = et > t;
-% Time vector of 20 min after the time window
-interval = et(t+1):5:et(t+1) + 20*60;
+
+interval = time(end):5:time(end) + 20*60+5;
+index = find(interval(1)==et);
 
 % Initial covariance
-DP0 = diag([0.01, 0.01, 0.1, 0.0001, 0.0001, 0.001]) ;
+DP0 = diag([0.01, 0.01, 0.1, 0.0001, 0.0001, 0.001]);
 
 % Noise Matrix for FFRF system
 FFRF.R = diag([FFRF.sigma_rho^2,FFRF.sigma_az^2 , FFRF.sigma_el^2]);
 
 % retrieve measurements during the time interval
-rho_meas = Rho(t+1: t + length(interval));
-az_meas = Azimuth(t+1: t + length(interval));
-el_meas = Elevation(t+1: t + length(interval));
+Rho = Rho(post_visibility);
+rho_meas = Rho(1: length(interval));
+
+Azimuth = Azimuth(post_visibility);
+az_meas = Azimuth(1:length(interval));
+
+Elevation = Elevation(post_visibility);
+el_meas = Elevation(1:length(interval));
 FFRF.meas = [rho_meas;az_meas;el_meas];
 
 % Retrieve state in the initial time
-DeltaX0 = Dxf(:,t+1);
+DXf_post_visib = Dxf(:,post_visibility);
+%DeltaX0 = DXf_post_visib(:,1);
 
+DeltaX0 = Dxf(:,index);
 % Unscented Kalman Filter
 [Dxx,DP,Delta_sigma_pos,Delta_sigma_vel] = UKF(interval,DP0,FFRF.R,DeltaX0,FFRF.meas,Station2,Sat1.n,1); %Flag to 1 for FFRF
 
 % Computing errors
-rel_states = Dxf(:,t+1:t+length(interval));
+rel_states = Dxf(:,index+1:index+length(interval)-1);
 
-rel_err_pos = Dxx(1:3,:) - rel_states(1:3,:);
+rel_err_pos = Dxx(1:3,2:end) - rel_states(1:3,:);
 rel_norm_err_pos = vecnorm(rel_err_pos,2);
 
-rel_err_vel = Dxx(4:6,:) - rel_states(4:6,:);
+rel_err_vel = Dxx(4:6,2:end) - rel_states(4:6,:);
 rel_norm_err_vel = vecnorm(rel_err_vel,2);
+
+%% Point 3
+span = interval;
+
+% Initialize Sigma points vector
+  x_sigma_sat1 = zeros(6,13);
+  x_sigma_sat2 = zeros(6,13);
+
+% Initialize vector containing last propagation of sigma points 
+xx_sigma_sat1 = zeros(6,13);
+
+% Initialization vector of mean values for every N revolution
+sigma_mean_sat1 = zeros(n,length(span)); 
+
+% Initialization vector of covariance matrices for every step
+sigma_cov_sat1 = zeros(n,n,length(span));
+
+sigma_pos = zeros(1,length(span));
+sigma_vel = zeros(1,length(span));
+
+
+% Initialize first iteration values
+ sigma_cov_sat1(:,:,1) = Sat1.Pk_up(:,:,end);
+ sigma_mean_sat1(:,1) = Sat1.xk_up(:,end);
+
+ Rot = LVLH_2_ECI(Sat1.xk_up(:,end),Sat1.n);
+ DP_ECI = Rot * DP(:,:,2) * Rot';
+
+ P_sat2 = zeros(6,6,length(span));
+ P_sat2(:,:,1) = DP_ECI +  Sat1.Pk_up(:,:,end);
+
+% First iteration
+P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,1)) ;
+
+for j = 2 : length(span)
+
+    for i = 1 : 2 * n + 1
+
+        % Compute Sigma Points
+         if(i==1)
+
+            x_sigma_sat1(:,i) = sigma_mean_sat1(:,j-1) ;
+           
+
+         elseif(i>1 && i<8)
+
+            x_sigma_sat1(:,i) = sigma_mean_sat1(:,j-1) + P_sq1(:,i-1);
+           
+
+         else
+
+            x_sigma_sat1(:,i) = sigma_mean_sat1(:,j-1) - P_sq1(:,i-n-1);
+
+         end
+
+        % Propagate Sigma points
+        [xx_sigma_sat1(:,i), ~, ~ ] = keplerian_propagator_J2(span(j-1),x_sigma_sat1(:,i), span(j), 'Earth');
+    
+        
+
+        % Sample Mean
+        sigma_mean_sat1(:,j) = sigma_mean_sat1(:,j) + W_m(i) * xx_sigma_sat1(:,i); 
+ 
+
+    end
+   
+    for i = 1: 2*n+1
+
+    sigma_cov_sat1(:,:,j) = sigma_cov_sat1(:,:,j) + W_c(i) * ((xx_sigma_sat1(:,i) - sigma_mean_sat1(:,j)) * (xx_sigma_sat1(:,i) - sigma_mean_sat1(:,j))');
+    
+    end
+
+    % Update Variance matrices
+    P_sq1 = sqrtm(lambda * sigma_cov_sat1(:,:,j)) ;
+
+    Rot = LVLH_2_ECI(sigma_mean_sat1(:,j),Sat1.n);
+
+    P_sat2(:,:,j) =  sigma_cov_sat1(:,:,j) + Rot*DP(:,:,j) * Rot';
+
+
+
+end
+
+for j = 1:length(interval)
+
+     % 3 Sigma for Pos and Vel
+      sigma_pos(j) = 3 * sqrt(max(eig( P_sat2(1:3,1:3,j))));
+      sigma_vel(j) = 3 * sqrt(max(eig( P_sat2(4:6,4:6,j)))); 
+end
+
+
+
+   
 
 %% Plots
 
@@ -333,41 +433,63 @@ plot([-180 180],[Station2.min_el Station2.min_el],'--')
 axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
-legend('','Minimum Elevation');
+legend('Mango Visibility window','Minimum Elevation');
 
 % Errors for UKF Mango
+ts = linspace(0,(Station2.sat1.visibility_noise(end)-Station2.sat1.visibility_noise(1))/60,length(Station2.sat1.visibility_noise));
 figure()
 subplot(2,1,1)
-plot(Station2.sat1.visibility_noise,Sat1.norm_err_pos,'b','LineWidth',2);
+plot(ts,Sat1.norm_err_pos,'b','LineWidth',2);
 hold on;
-plot(Station2.sat1.visibility_noise,Sat1.sigma_pos(2:end),'--r','LineWidth',2);
+plot(ts,Sat1.sigma_pos(2:end),'--r','LineWidth',2);
 legend('Position error','3 $\sigma$','Interpreter','latex');
+xlabel('Time[min]');
+ylabel('Error[-]');
 
 subplot(2,1,2)
-plot(Station2.sat1.visibility_noise,Sat1.norm_err_vel,'b','LineWidth',2);
+plot(ts,Sat1.norm_err_vel,'b','LineWidth',2);
 hold on;
-plot(Station2.sat1.visibility_noise,Sat1.sigma_vel(2:end),'--r','LineWidth',2);
+plot(ts,Sat1.sigma_vel(2:end),'--r','LineWidth',2);
 legend('Velocity error','3 $\sigma$','Interpreter','latex');
+xlabel('Time[min]');
+ylabel('Error[-]');
 
 % Errors for UKF FFRF system
+tspan = linspace(0,20,length(rel_norm_err_pos));
 figure()
-subplot(2,1,1)
-plot(interval,rel_norm_err_pos,'b','LineWidth',2);
+plot(tspan,rel_norm_err_pos,'b','LineWidth',2);
 hold on;
-plot(interval,Delta_sigma_pos,'--r','LineWidth',2);
+plot(tspan,Delta_sigma_pos(2:end),'--r','LineWidth',2);
 legend('Position error','3 $\sigma$','Interpreter','latex');
 title('FFRF Position');
-subplot(2,1,2)
-plot(interval,rel_norm_err_vel,'b','LineWidth',2);
+xlabel('Time[min]');
+ylabel('Error[-]');
+
+figure()
+plot(tspan,rel_norm_err_vel,'b','LineWidth',2);
 hold on;
-plot(interval,Delta_sigma_vel,'--r','LineWidth',2);
+plot(tspan,Delta_sigma_vel(2:end),'--r','LineWidth',2);
 legend('Velocity error','3 $\sigma$','Interpreter','latex');
 title('FFRF Velocity');
+xlabel('Time[min]');
+ylabel('Error[-]');
 
 
+figure()
+s = linspace(0,20,length(sigma_pos));
+plot(s,sigma_pos)
+xlabel("Time[min]")
+ylabel('[-]')
+legend(" 3 $\sigma$ on Position",'Interpreter','Latex');
+
+figure()
+plot(s,sigma_vel)
+xlabel("Time[min]")
+ylabel('[-]')
+legend(" 3 $\sigma$ on Velocity",'Interpreter','Latex');
 
 %% Functions
-function [r_LVLH, v_LVLH] = ECI_2_LVLH(r,v)
+function [RR] = ECI_2_LVLH(r,v,n)
 
 
 % Compute Row vectors
@@ -377,20 +499,18 @@ k_ax = h/norm(h);
 j_ax = cross(k_ax,i_ax);
 
 % Rotation Matrix
-rotm_LVLH = [i_ax, j_ax, k_ax];
+R = [i_ax, j_ax, k_ax]';
 
-% Position in LVLH Frame
-r_LVLH = rotm_LVLH * r;
 
-% Derivative of Matrix
+% Create Rdot matrix
+S = [0 n 0;
+    -n 0 0 ;
+     0 0 0 ];
+R_dot = S*R;
 
-d_ez = 1/norm(r) * (v - dot(r,v) * r);
-d_ey = zeros(3,1);
-d_ex = cross(h,d_ez);
-
-dot_rotm_LVLH = [d_ex, d_ey , d_ez]';
-
-v_LVLH = dot_rotm_LVLH * r + rotm_LVLH * v;
+% Assemble ECI2LVLH 
+RR = [R zeros(3,3);
+      R_dot R];
 
 
 end
@@ -403,7 +523,7 @@ function t = visibility(et,stationname,satname,tstep)
 %   INPUT:      -et: Time of visibility in ET   [s], [1,n]
 %               -tstep: Given step of et, (1 minute if not specified)
 %
-%   OUTPUT:     -t: Index where visibility window finish
+%   OUTPUT:     -t: time when visibility window finishes
 %
 %
 %   AUTHOT: Matteo Bono
@@ -440,7 +560,7 @@ while(flag==true && k<length(et)+1)
         %flag = false;
         fprintf('@%s for #%s: End of Visibility: %s\n',stationname,satname,cspice_et2utc(et(k),'C',3));
         fprintf('--------------------------------------------------------------------------\n');
-        t=k;
+        t=et(k);
     end
 k = k+1;
 end
@@ -456,7 +576,7 @@ function [xf, tt, xx] = keplerian_propagator(t0, x0, t1 , attractor)
 options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-9; ones(3,1)*1e-12]);
 
 % Perform integration
-[tt, xx] = ode78(@(t,x) keplerian_rhs(t,x,GM), [0 t1-t0], x0, options);
+[tt, xx] = ode78(@(t,x) keplerian_rhs(t,x,GM), [t0 t1], x0, options);
 
 % Extract state vector 
 xf = xx(end,1:6)';
@@ -473,7 +593,7 @@ function [xf, tt, xx] = keplerian_propagator_J2(t0, x0, t1 , attractor)
 options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-9; ones(3,1)*1e-12]);
 
 % Perform integration
-[tt, xx] = ode78(@(t,x) keplerian_rhs_J2(t,x,GM), [0 t1-t0], x0, options);
+[tt, xx] = ode78(@(t,x) keplerian_rhs_J2(t,x,GM), [t0 t1], x0, options);
 
 % Extract state vector 
 xf = xx(end,1:6)';
@@ -683,7 +803,7 @@ function [xf , xx, tt] = CW_propagation(et0, x0,etf,n)
 options = odeset('reltol', 1e-12, 'abstol', 1e-12*ones(6,1));
 
 % Perform integration
-[tt, xx] = ode78(@(t,x) CW_eq(t,x,n),[0 etf-et0], x0, options);
+[tt, xx] = ode113(@(t,x) CW_eq(t,x,n),[et0 etf], x0, options);
 
 % Extract state vector 
 xf = xx(end,1:6);
@@ -696,7 +816,7 @@ function [dxdt] = CW_eq(~,x,n)
 dxdt = zeros(6,1);
 
 dxdt(1:3) = x(4:6);
-dxdt(4) = 3 * n^2 * x(1) + 2 * n * x(5)^2;
+dxdt(4) = 3 * n^2 * x(1) + 2 * n * x(5);
 dxdt(5) = -2 * n * x(4);
 dxdt(6) = -n^2 * x(3);
 
@@ -712,9 +832,9 @@ function [Rho,Azimuth,Elevation] = FFRF_measurements(Dx)
 %   INPUT: -Dx : Propagated Relative state                      [6,n]
 %          -FFRF : Struct with measurements noise parameters
 %
-%   OUTPUT: -Rho        [1,n]
-%           -Azimuth    [1,n]
-%           -Elevation  [1,n]
+%   OUTPUT: -Rho        [1,n]  [Km]
+%           -Azimuth    [1,n]  [Rad]
+%           -Elevation  [1,n]  [Rad]
 %
 % Author : Matteo Bono
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -833,19 +953,22 @@ for j = 2 : length(time)
 
          end
 
-     if(flag==0)
-        % Propagate Sigma points
-        [xx_sigma(:,i), ~, ~ ] = keplerian_propagator_J2(time(j-1),x_sigma(:,i), time(j), 'Earth');
-        
-        % Sigma points in Measurement space %[Km - Rad - Rad]
-       
-        [rho_meas(i), azimuth_meas(i), elevation_meas(i)] = pointing(station.name,xx_sigma(1:3,i),xx_sigma(4:6,i),time(j));
-     else
+     switch flag
 
-         [xx_sigma(:,i) ,~, ~] = CW_propagation(time(j-1), x_sigma(:,i) ,time(j),N);
+         case 0
 
-         % Retrieve FFRF measurements from Geometry
-         [rho_meas(i),azimuth_meas(i),elevation_meas(i)] = FFRF_measurements(xx_sigma(:,i));
+            % Propagate Sigma points
+            [xx_sigma(:,i), ~, ~ ] = keplerian_propagator_J2(time(j-1),x_sigma(:,i), time(j), 'Earth');
+            
+            % Sigma points in Measurement space %[Km - Rad - Rad]
+            [rho_meas(i), azimuth_meas(i), elevation_meas(i)] = pointing(station.name,xx_sigma(1:3,i),xx_sigma(4:6,i),time(j));
+             
+         case 1
+
+             [xx_sigma(:,i) ,~, ~] = CW_propagation(time(j-1), x_sigma(:,i) ,time(j),N);
+    
+             % Retrieve FFRF measurements from Geometry
+             [rho_meas(i),azimuth_meas(i),elevation_meas(i)] = FFRF_measurements(xx_sigma(:,i));
 
      end
         % Sample Mean
@@ -865,10 +988,7 @@ for j = 2 : length(time)
     Pk_m(:,:,j-1) = Pk_m(:,:,j-1) + W_c(i) * ((xx_sigma(:,i) - xk_m(:,j-1)) * (xx_sigma(:,i) - xk_m(:,j-1))');
     
     % Measurement differences
-    diff_rho = yyk(1,i) - yk_m(1,j-1);
-    diff_az = angdiff(yyk(2,i)*cspice_rpd,yk_m(2,j-1)*cspice_rpd);
-    diff_el = angdiff(yyk(3,i)*cspice_rpd,yk_m(3,j-1)*cspice_rpd);
-    diff_meas = [diff_rho ; diff_az*cspice_dpr ; diff_el*cspice_dpr];
+    diff_meas = angles_diff(yyk(:,i),yk_m(:,j-1));
     
     Pyy(:,:,j-1) = Pyy(:,:,j-1) + W_c(i) * ((diff_meas) * (diff_meas'));
     Pxy(:,:,j-1) = Pxy(:,:,j-1) + W_c(i) * ((xx_sigma(:,i) - xk_m(:,j-1)) * (diff_meas'));
@@ -880,7 +1000,8 @@ for j = 2 : length(time)
     Kk = Pxy(:,:,j-1) / (Pyy(:,:,j-1));
 
     % Update State
-    xk_up(:,j) = xk_m(:,j-1) + Kk * (y_meas(:,j-1) - yk_m(:,j-1));
+    
+    xk_up(:,j) = xk_m(:,j-1) + Kk * (angles_diff(y_meas(:,j-1), yk_m(:,j-1)));
     Pk_up(:,:,j) = Pk_m(:,:,j-1) - Kk * Pyy(:,:,j-1) * Kk';
 
     % Force simmetry
@@ -899,4 +1020,53 @@ for j = 2 : length(time)
 end
 
 end
+
+function diff_meas = angles_diff(y,y_m)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%&
+% This function compute the differences of measurements taking care of
+% residuals for angles with the function angdiff. Input angles are in
+% Rad and output differences are in Deg.
+%
+%   INPUT: -y:      Measurements at a certain time instant [3,1]
+%          -y_m:    Mean of Measurements at time instant   [3,1]
+%
+%   OUTPUIT: -diff_meas: compute difference of measurement [3,1]
+%
+% Author: Matteo Bono
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    diff_rho = y(1) - y_m(1);
+    diff_az = angdiff(y(2)*cspice_rpd,y_m(2)*cspice_rpd);
+    diff_el = angdiff(y(3)*cspice_rpd,y_m(3)*cspice_rpd);
+    diff_meas = [diff_rho ; diff_az*cspice_dpr ; diff_el*cspice_dpr];
+    end
+
+function Rot = LVLH_2_ECI(X,n)
+
+
+    % Extract vector
+    r = X(1:3);
+    v = X(4:6);
+    norm_r = norm(r);
+    
+    % Create R matrix
+    i = r./norm_r;
+    k = cross(r,v)/(norm(cross(r,v)));
+    j = cross(k,i);
+    R = [i,j,k]';
+    
+    % Create Rdot matrix
+    S = [0 n 0;
+         -n 0 0 ;
+         0 0 0 ];
+    R_dot = S*R;
+
+
+    % Assemble LVLH2ECI 
+    Rot = [R' zeros(3,3);
+          R_dot' R'];
+
+    end
+    
+
+
 
