@@ -34,7 +34,6 @@ Sat1.v0_mean = [0.812221125483763; -0.721512914578826; 7.42665302729053];
 Sat1.x0_mean = [Sat1.r0_mean; Sat1.v0_mean];
 
 
-
 % Covariance Matrix
  P0_ref = [   [5.6e-7  3.5e-7  -7.1e-8 
            3.5e-7  9.7e-7   7.6e-8      
@@ -143,7 +142,6 @@ for i = 1:length(et)
 end
 
 GM = cspice_bodvrd('Earth','GM',1);
-
 
 
 % Compute antenna angles, satellite range and range-rate wrt Station 2

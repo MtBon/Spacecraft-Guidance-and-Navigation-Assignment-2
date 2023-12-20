@@ -303,7 +303,8 @@ for i = 1 : length(et)
     cov_sum_pos_Lin(i) = 3 * sqrt(max(eig(P_pos_sum_Lin(:,:,i))));
     cov_sum_pos_UT(i) = 3 * sqrt(max(eig(P_pos_sum_UT(:,:,i))));
 
-    %Values to plot for Point 3
+    % 3 Sigma for all methods in position and velocity
+
     %LinCov
     cov_pos_sat1_Lin(i) = 3 * sqrt(max(eig(P_pos_Lin_sat1(:,:,i))));
     cov_vel_sat1_Lin(i) = 3 * sqrt(max(eig(P_vel_Lin_sat1(:,:,i))));
@@ -479,25 +480,27 @@ end
 
 %% Plots
 
-tp = linspace(1,11,11);
+tp = linspace(0,10,11);
 
-% Trace pos and Vel for Point 1
+% % Trace pos and Vel for Point 1
+% figure()
+% subplot(1,2,1)
+% plot(et,trace_pos_sat1,et,trace_pos_sat2,'LineWidth',2);
+% legend('Mango','Tango');
+% title('Position')
+% 
+% subplot(1,2,2)
+% plot(et,trace_vel_sat1,et,trace_vel_sat2,'LineWidth',2);
+% legend('Mango','Tango');
+% title('Velocity')
+
 figure()
-subplot(1,2,1)
-plot(et,trace_pos_sat1,et,trace_pos_sat2,'LineWidth',2);
-legend('Mango','Tango');
-title('Position')
-
-subplot(1,2,2)
-plot(et,trace_vel_sat1,et,trace_vel_sat2,'LineWidth',2);
-legend('Mango','Tango');
-title('Velocity')
-
-figure()
-plot(tp,Dr_UT,tp,Dr_Lin,'LineWidth',2);
+plot(tp,Dr_UT,'b','LineWidth',2);
+hold on;
+plot(tp,cov_sum_pos_UT,'--r','LineWidth',2)
 xlabel('Orbital Periods');
 ylabel('[Km]')
-legend('$\Delta r_{Lin}$','$\Delta r_{UT}$','interpreter','latex')
+legend('$\Delta r$','3$\sigma$','interpreter','latex')
 
 % Plots for Point 3
 figure()
