@@ -437,17 +437,17 @@ legend('Mango Visibility window','Minimum Elevation');
 ts = linspace(0,(Station2.sat1.visibility_noise(end)-Station2.sat1.visibility_noise(1))/60,length(Station2.sat1.visibility_noise));
 figure()
 subplot(2,1,1)
-plot(ts,Sat1.norm_err_pos,'b','LineWidth',2);
+semilogy(ts,Sat1.norm_err_pos,'b','LineWidth',2);
 hold on;
-plot(ts,Sat1.sigma_pos(2:end),'--r','LineWidth',2);
+semilogy(ts,Sat1.sigma_pos(2:end),'--r','LineWidth',2);
 legend('Position error','3 $\sigma$','Interpreter','latex');
 xlabel('Time[min]');
 ylabel('Error[-]');
 
 subplot(2,1,2)
-plot(ts,Sat1.norm_err_vel,'b','LineWidth',2);
+semilogy(ts,Sat1.norm_err_vel,'b','LineWidth',2);
 hold on;
-plot(ts,Sat1.sigma_vel(2:end),'--r','LineWidth',2);
+semilogy(ts,Sat1.sigma_vel(2:end),'--r','LineWidth',2);
 legend('Velocity error','3 $\sigma$','Interpreter','latex');
 xlabel('Time[min]');
 ylabel('Error[-]');
@@ -455,18 +455,18 @@ ylabel('Error[-]');
 % Errors for UKF FFRF system
 tspan = linspace(0,20,length(rel_norm_err_pos));
 figure()
-plot(tspan,rel_norm_err_pos,'b','LineWidth',2);
+semilogy(tspan,rel_norm_err_pos,'b','LineWidth',2);
 hold on;
-plot(tspan,Delta_sigma_pos(2:end),'--r','LineWidth',2);
+semilogy(tspan,Delta_sigma_pos(2:end),'--r','LineWidth',2);
 legend('Position error','3 $\sigma$','Interpreter','latex');
 title('FFRF Position');
 xlabel('Time[min]');
 ylabel('Error[-]');
 
 figure()
-plot(tspan,rel_norm_err_vel,'b','LineWidth',2);
+semilogy(tspan,rel_norm_err_vel,'b','LineWidth',2);
 hold on;
-plot(tspan,Delta_sigma_vel(2:end),'--r','LineWidth',2);
+semilogy(tspan,Delta_sigma_vel(2:end),'--r','LineWidth',2);
 legend('Velocity error','3 $\sigma$','Interpreter','latex');
 title('FFRF Velocity');
 xlabel('Time[min]');

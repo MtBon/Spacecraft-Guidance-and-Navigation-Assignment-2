@@ -10,6 +10,7 @@ clc; clearvars; close all
 addpath('sgp4');
 addpath('functions');
 addpath('kernels');
+addpath(genpath('..\mice'));
 % Load spice kernels
 cspice_furnsh('assignment02.tm');
 
@@ -352,7 +353,6 @@ legend(Sat1.name)
 % Plot passes (azimuth and elevation) w/o noise
 figure()
 subplot(1,2,1)
-
 scatter(Station1.sat1.azimuth(i_visibility_station1)*cspice_dpr(), Station1.sat1.elevation(i_visibility_station1)*cspice_dpr(),'b','filled','DisplayName', Sat1.name)
 hold on;
 plot([-180 180],[Station1.min_el Station1.min_el],'--')
@@ -360,7 +360,7 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
-
+title('@',Station1.name);
 subplot(1,2,2)
 scatter(Station2.sat1.azimuth(i_visibility_station2)*cspice_dpr(), Station2.sat1.elevation(i_visibility_station2)*cspice_dpr(),'b','filled','DisplayName', Sat1.name)
 hold on;
@@ -369,7 +369,7 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
-
+title(['@',Station2.name])
 
 
 % Plot passes (azimuth and elevation) with Noise
@@ -382,9 +382,9 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
+title(['@',Station1.name]);
+
 subplot(1,2,2)
-
-
 scatter(Station2.sat1.azimuth_noise(i_visibility_noise_station2), Station2.sat1.elevation_noise(i_visibility_noise_station2),'b','filled','DisplayName', Sat1.name)
 hold on;
 plot([-180 180],[Station2.min_el Station2.min_el],'--')
@@ -392,27 +392,7 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
-
-% Plot passes (azimuth and elevation) with Noise for Tango
-figure()
-subplot(1,2,1)
-scatter(Station1.sat2.azimuth_noise(i_visibility_noise_station1_Tango), Station1.sat2.elevation_noise(i_visibility_noise_station1),'b','filled','DisplayName', Sat1.name)
-hold on;
-plot([-180 180],[Station1.min_el Station1.min_el],'--')
-axis([-180,180,0, 50])
-xlabel('Azimuth [deg]')
-ylabel('Elevation [deg]')
-legend('','Minimum Elevation');
-subplot(1,2,2)
-
-
-scatter(Station2.sat1.azimuth_noise(i_visibility_noise_station2), Station2.sat1.elevation_noise(i_visibility_noise_station2),'b','filled','DisplayName', Sat1.name)
-hold on;
-plot([-180 180],[Station2.min_el Station2.min_el],'--')
-axis([-180,180,0, 50])
-xlabel('Azimuth [deg]')
-ylabel('Elevation [deg]')
-legend('','Minimum Elevation');
+title(['@',Station2.name]);
 
 figure()
 skyplot(wrapTo360(Station1.sat1.azimuth(i_visibility_station1)*cspice_dpr()),Station1.sat1.elevation(i_visibility_station1)*cspice_dpr(),MaskElevation=Station1.min_el); 
@@ -431,11 +411,16 @@ figure()
 skyplot(wrapTo360(Station2.sat1.azimuth_noise(i_visibility_noise_station2)),Station2.sat1.elevation_noise(i_visibility_noise_station2),MaskElevation=Station2.min_el); 
 title(['@',Station2.name])
 
-% Residuals of Batch Filter
-
+figure()
+plot(vecnorm(residual1'))
+hold on;
+plot(vecnorm(residual_12'))
+plot(vecnorm(residual_12_j2'))
+plot(vecnorm(residual_sat2'))
+legend('Kourou','Kourou + S')
+title('Norm of residuals');
 %% Functions
-%
-%
+
 function residual = costfunction(x,t0, t_span, W_m, meas_real,Station)
 
 residual = zeros(size(meas_real)); % Initialize output variable
@@ -471,7 +456,7 @@ for k=1:length(t_span)
 end
 
 end
-%
+
 function residual = costfunction_both(x,t0, t_span1,t_span2, W_m, meas_real1,meas_real2,Station1,Station2)
 
 
@@ -533,8 +518,7 @@ for k=1:length(t_span2)
 end
 residual = [residual1;residual2];
 end
-%
-%
+
 function residual = costfunction_J2(x, t0,t_span1,t_span2, W_m, meas_real1,meas_real2,Station1,Station2)
 
 mu = cspice_bodvrd('Earth','GM',1);
@@ -596,8 +580,7 @@ end
 residual = [residual1;residual2];
 
 end
-%
-%
+
 function [xf, tt, xx] = keplerian_propagator(t0, x0, t1 , attractor)
 %KEPLERIAN_PROPAGATOR Propagate a Keplerian Orbit 
 
@@ -614,7 +597,7 @@ options = odeset('reltol', 1e-12, 'abstol', [ones(3,1)*1e-9; ones(3,1)*1e-12]);
 xf = xx(end,1:6)';
 
 end
-%
+
 function [dxdt] = keplerian_rhs(~, x, GM)
 %KEPLERIAN_RHS  Evaluates the right-hand-side of a 2-body (keplerian) propagator
 %   Evaluates the right-hand-side of a newtonian 2-body propagator.
@@ -663,9 +646,7 @@ dxdt(1:3) = x(4:6);
 dxdt(4:6) = - GM * rr /(dist*dist2);
 
 end
-%
-%
-%
+
 function [dxdt] = keplerian_rhs_J2(t, x, GM)
 %KEPLERIAN_RHS_J2  Evaluates the right-hand-side of a 2-body (keplerian) propagator
 %   Evaluates the right-hand-side of a newtonian 2-body propagator with J2 perturbation.
@@ -710,9 +691,7 @@ dxdt(1:3) = x(4:6);
 dxdt(4:6) = - GM * rr /(dist*dist2) + aj2;
 
 end
-%
-%
-%
+
 function [rho, azimuth, elevation] = pointing(stationName,rr_ECI,vv_ECI,et)
 %
 % This function is used to compute the measurement of Range, Azimuth and
@@ -764,8 +743,7 @@ rv_station_sat_topo(:,i) = ROT_ECI2TOPO(:,:,i) * rv_station_sat_eci(:,i);
 end
 
 end
-%
-%
+
 function visibility(et,stationname,satname,tstep)
 %
 % This function evaluate the boundaries of the visibility windows given as
@@ -810,8 +788,6 @@ while(flag==true && k<length(et)+1)
 
 end
 end
-%
-%
 
 function matlab_graphics()
 %{
@@ -862,6 +838,3 @@ set(0, 'defaultAxesColor', 'none');
 % fontSize
 set(0,'defaultAxesFontSize',16);
 end
-%
-%
-%

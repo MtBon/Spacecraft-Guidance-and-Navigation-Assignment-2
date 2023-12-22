@@ -10,6 +10,7 @@ clc; clearvars; close all
 addpath('sgp4');
 addpath('functions');
 addpath('kernels');
+addpath(genpath('..\mice'));
 % Load spice kernels
 cspice_furnsh('assignment02.tm');
 
@@ -352,7 +353,6 @@ legend(Sat1.name)
 % Plot passes (azimuth and elevation) w/o noise
 figure()
 subplot(1,2,1)
-
 scatter(Station1.sat1.azimuth(i_visibility_station1)*cspice_dpr(), Station1.sat1.elevation(i_visibility_station1)*cspice_dpr(),'b','filled','DisplayName', Sat1.name)
 hold on;
 plot([-180 180],[Station1.min_el Station1.min_el],'--')
@@ -360,7 +360,7 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
-
+title('@',Station1.name);
 subplot(1,2,2)
 scatter(Station2.sat1.azimuth(i_visibility_station2)*cspice_dpr(), Station2.sat1.elevation(i_visibility_station2)*cspice_dpr(),'b','filled','DisplayName', Sat1.name)
 hold on;
@@ -369,7 +369,7 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
-
+title(['@',Station2.name])
 
 
 % Plot passes (azimuth and elevation) with Noise
@@ -382,9 +382,9 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
+title(['@',Station1.name]);
+
 subplot(1,2,2)
-
-
 scatter(Station2.sat1.azimuth_noise(i_visibility_noise_station2), Station2.sat1.elevation_noise(i_visibility_noise_station2),'b','filled','DisplayName', Sat1.name)
 hold on;
 plot([-180 180],[Station2.min_el Station2.min_el],'--')
@@ -392,7 +392,7 @@ axis([-180,180,0, 50])
 xlabel('Azimuth [deg]')
 ylabel('Elevation [deg]')
 legend('','Minimum Elevation');
-
+title(['@',Station2.name]);
 
 figure()
 skyplot(wrapTo360(Station1.sat1.azimuth(i_visibility_station1)*cspice_dpr()),Station1.sat1.elevation(i_visibility_station1)*cspice_dpr(),MaskElevation=Station1.min_el); 
@@ -411,8 +411,15 @@ figure()
 skyplot(wrapTo360(Station2.sat1.azimuth_noise(i_visibility_noise_station2)),Station2.sat1.elevation_noise(i_visibility_noise_station2),MaskElevation=Station2.min_el); 
 title(['@',Station2.name])
 
-% Residuals of Batch Filter
-
+figure()
+plot(vecnorm(residual1'))
+hold on;
+plot(vecnorm(residual_12'))
+plot(vecnorm(residual_12_j2'))
+legend('Kourou','Kourou + Svalbard','Kourou + Svalbard + J2')
+title('Norm of residuals');
+xlabel('Measurements');
+ylabel('[-]');
 %% Functions
 
 function residual = costfunction(x,t0, t_span, W_m, meas_real,Station)
