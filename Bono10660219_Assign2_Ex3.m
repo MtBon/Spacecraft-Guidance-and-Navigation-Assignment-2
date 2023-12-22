@@ -475,13 +475,13 @@ ylabel('Error[-]');
 
 figure()
 s = linspace(0,20,length(sigma_pos));
-plot(s,sigma_pos)
+semilogy(s,sigma_pos)
 xlabel("Time[min]")
 ylabel('[-]')
 legend(" 3 $\sigma$ on Position",'Interpreter','Latex');
 
 figure()
-plot(s,sigma_vel)
+semilogy(s,sigma_vel)
 xlabel("Time[min]")
 ylabel('[-]')
 legend(" 3 $\sigma$ on Velocity",'Interpreter','Latex');

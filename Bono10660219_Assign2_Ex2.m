@@ -284,9 +284,25 @@ x0_guess2 =[reci_sat2(:,1) ; veci_sat2(:,1)];
 [x_sat2,resnorm_sat2,residual_sat2,exitflag_sat2,~,~,jacobian_sat2] = lsqnonlin(fun_12_j2, x0_guess2, [], [], options);
 
 disp('x_sat2 - x_0 =');
-disp((x_sat2 - x0_guess2).');
+disp((x_sat2 - x0_guess2)');
 
 %%
+figure()
+subplot(1,2,1)
+plot(et/cspice_spd(), Station1.sat1.rho , 'DisplayName', Sat1.name)
+title(['@',Station1.name])
+xlabel('Epoch [MJD2000]')
+ylabel('Range [Km]')
+legend(Sat1.name)
+
+subplot(1,2,2)
+plot(et/cspice_spd(), Station2.sat1.rho , 'DisplayName', Sat1.name)
+title(['@',Station2.name])
+xlabel('Epoch [MJD2000]')
+ylabel('Range [Km]')
+legend(Sat1.name)
+
+
 figure()
 subplot(1,2,1)
 plot(et/cspice_spd(), Station1.sat1.azimuth * cspice_dpr(), 'DisplayName', Sat1.name)
@@ -412,14 +428,22 @@ skyplot(wrapTo360(Station2.sat1.azimuth_noise(i_visibility_noise_station2)),Stat
 title(['@',Station2.name])
 
 figure()
-plot(vecnorm(residual1'))
+semilogy(vecnorm(residual1'))
 hold on;
-plot(vecnorm(residual_12'))
-plot(vecnorm(residual_12_j2'))
+semilogy(vecnorm(residual_12'))
+semilogy(vecnorm(residual_12_j2'))
 legend('Kourou','Kourou + Svalbard','Kourou + Svalbard + J2')
 title('Norm of residuals');
 xlabel('Measurements');
 ylabel('[-]');
+
+figure()
+semilogy(vecnorm(residual_sat2'))
+legend('Kourou + Svalbard + J2')
+xlabel('Measurements');
+ylabel('[-]');
+title('Tango')
+
 %% Functions
 
 function residual = costfunction(x,t0, t_span, W_m, meas_real,Station)
